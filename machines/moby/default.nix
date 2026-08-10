@@ -27,6 +27,7 @@
     ./boot.nix
     ./overleaf.nix
     ./ejabberd.nix
+    ./marimohub-connector.nix
     # ./marimohub.nix # Disabled: keep Overleaf's internal port 3000 free
     # ./hedgedoc.nix # This wasn't as useful
     # ./org-gcal.nix # Removed until we migrate over

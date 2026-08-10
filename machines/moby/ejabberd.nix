@@ -5,6 +5,7 @@ let
   # the service outside the tailnet.
   domain = "moby.tail5e510f.ts.net";
   tailscaleIPv4 = "100.94.5.85";
+  epmdPort = "4370";
   tlsDir = "/var/lib/ejabberd/tls";
   certFile = "${tlsDir}/${domain}.crt";
   keyFile = "${tlsDir}/${domain}.key";
@@ -116,6 +117,7 @@ in
     enable = true;
     configFile = "/etc/ejabberd/ejabberd.yml";
     ctlConfig = ''
+      ERL_EPMD_PORT=${epmdPort}
       INET_DIST_INTERFACE=127.0.0.1
     '';
   };
@@ -123,12 +125,14 @@ in
   environment.etc."ejabberd/ejabberd.yml".source = ejabberdConfig;
   environment.etc."ejabberd/ejabberdctl.cfg".text = ''
     ERL_EPMD_ADDRESS=127.0.0.1
+    ERL_EPMD_PORT=${epmdPort}
     INET_DIST_INTERFACE=127.0.0.1
   '';
 
-  # The NixOS ejabberd module enables EPMD. Keep it on loopback: this is a
-  # single-node deployment and the host firewall is currently disabled.
-  services.epmd.listenStream = "127.0.0.1:4369";
+  # The NixOS ejabberd module enables EPMD. Keep it on a dedicated loopback
+  # port so personal Erlang sessions cannot collide with the system daemon.
+  services.epmd.listenStream = "127.0.0.1:${epmdPort}";
+  systemd.services.epmd.environment.ERL_EPMD_PORT = epmdPort;
 
   # Obtain and renew the tailnet's trusted certificate. The private key is
   # copied into ejabberd's private state directory and never enters the store.
@@ -176,6 +180,7 @@ in
   systemd.services.ejabberd = {
     after = [ "ejabberd-tailscale-cert.service" ];
     requires = [ "ejabberd-tailscale-cert.service" ];
+    environment.ERL_EPMD_PORT = epmdPort;
   };
 
   systemd.tmpfiles.rules = [

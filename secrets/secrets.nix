@@ -13,6 +13,7 @@ in
   "atuin.age".publicKeys = keys;
   "cloudflared-overleaf.age".publicKeys = keys;
   "cloudflared-marimohub.age".publicKeys = keys;
+  "cloudflared-marimohub-quasimorphic.age".publicKeys = keys;
   "marimohub-google.age".publicKeys = keys;
   "netrc-overleaf.age".publicKeys = keys;
   "org-gcal.age".publicKeys = keys;
