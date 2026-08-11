@@ -2914,25 +2914,18 @@ Returns the Ghostel buffer."
     (setq ghostel-kill-buffer-on-exit t)
     (setq ghostel-module-auto-install 'download)
 
-    ;; `ghostel-send-next-key' normally writes C0 control characters as raw
-    ;; bytes.  Route them through Ghostel's encoder instead so intercepted keys
-    ;; such as C-x honor Kitty keyboard mode in the child terminal.
-    (defun afm/ghostel-send-next-key-encode-control (orig-fn)
-      "Make ORIG-FN encode C0 control keys using the terminal's active mode."
-      (let ((event (read-event "Send key: ")))
-        (if (and (integerp event) (<= 0 event) (<= event 31))
-            (let ((key-name
-                   (cond
-                    ((zerop event) "@")
-                    ((<= event 26) (string (+ ?a event -1)))
-                    (t (string (+ ?@ event))))))
-              (ghostel--send-encoded key-name "ctrl"))
-          (let ((unread-command-events (cons event unread-command-events)))
-            (funcall orig-fn)))))
-    (unless (advice-member-p #'afm/ghostel-send-next-key-encode-control
-                             'ghostel-send-next-key)
-      (advice-add 'ghostel-send-next-key :around
-                  #'afm/ghostel-send-next-key-encode-control))
+    ;; Send a literal C0 byte rather than consulting the terminal encoder.
+    ;; Pi leaves Kitty keyboard mode active while its external editor runs;
+    ;; encoding C-x there produces a visible CSI-u string that nano cannot
+    ;; interpret.  Raw C-x works both in nano and in Pi's own input handler.
+    (defun afm/ghostel-send-C-x ()
+      "Send a literal C-x byte to the foreground program in Ghostel."
+      (interactive)
+      (unless (derived-mode-p 'ghostel-mode)
+        (user-error "Not in a Ghostel buffer"))
+      (ghostel-send-string (string ?\C-x)))
+    (define-key ghostel-mode-map (kbd "C-c C-x")
+                #'afm/ghostel-send-C-x)
 
     (with-eval-after-load 'meow
       (add-to-list 'meow-mode-state-list '(ghostel-mode . insert))))
