@@ -194,7 +194,19 @@
           "amunoz@oppy" = lib.homeManagerConfiguration {
             pkgs = pkgsFor.x86_64-linux;
             extraSpecialArgs = { inherit inputs outputs; };
-            modules = [ outputs.homeModules.amunoz ];
+            modules = [
+              outputs.homeModules.amunoz
+              {
+                # Decrypt the existing Overleaf git-bridge credentials with
+                # ~/.ssh/id_ed25519 when this Home Manager profile activates.
+                age.secrets.netrc-overleaf = {
+                  file = ./secrets/netrc-overleaf.age;
+                  path = "/home/amunoz/.netrc";
+                  mode = "0600";
+                  symlink = false;
+                };
+              }
+            ];
           };
 
           "amunoz@spirit" = lib.homeManagerConfiguration {
