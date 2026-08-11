@@ -134,6 +134,33 @@
         ];
       };
 
+      # Complete Oppy profile exported for Neusis and standalone Home Manager.
+      # Keep host-specific secrets and services here so both consumers evaluate
+      # the same module rather than maintaining parallel wiring.
+      homeModules."amunoz-oppy" = {
+        imports = [
+          outputs.homeModules.amunoz
+          outputs.homeModules.pi-msg
+        ];
+
+        # Decrypt the existing Overleaf git-bridge credentials with
+        # ~/.ssh/id_ed25519 when this Home Manager profile activates.
+        age.secrets.netrc-overleaf = {
+          file = ./secrets/netrc-overleaf.age;
+          path = "/home/amunoz/.netrc";
+          mode = "0600";
+          symlink = false;
+        };
+
+        services.pi-msg = {
+          enable = true;
+          domain = "moby.tail5e510f.ts.net";
+          botUsername = "pi-oppy";
+          secretFile = ./secrets/pi-msg-oppy.age;
+          registrationSshHost = "moby.tail5e510f.ts.net";
+        };
+      };
+
       # packages = forEachSystem (pkgs: import ./pkgs {inherit pkgs;});
       devShells = forEachSystem (pkgs: import ./shell.nix { inherit pkgs inputs; });
       # formatter = forEachSystem (pkgs: pkgs.nixfmt-rfc-style);
@@ -215,28 +242,7 @@
           "amunoz@oppy" = lib.homeManagerConfiguration {
             pkgs = pkgsFor.x86_64-linux;
             extraSpecialArgs = { inherit inputs outputs; };
-            modules = [
-              outputs.homeModules.amunoz
-              outputs.homeModules.pi-msg
-              {
-                # Decrypt the existing Overleaf git-bridge credentials with
-                # ~/.ssh/id_ed25519 when this Home Manager profile activates.
-                age.secrets.netrc-overleaf = {
-                  file = ./secrets/netrc-overleaf.age;
-                  path = "/home/amunoz/.netrc";
-                  mode = "0600";
-                  symlink = false;
-                };
-
-                services.pi-msg = {
-                  enable = true;
-                  domain = "moby.tail5e510f.ts.net";
-                  botUsername = "pi-oppy";
-                  secretFile = ./secrets/pi-msg-oppy.age;
-                  registrationSshHost = "moby.tail5e510f.ts.net";
-                };
-              }
-            ];
+            modules = [ outputs.homeModules."amunoz-oppy" ];
           };
 
           "amunoz@spirit" = lib.homeManagerConfiguration {
