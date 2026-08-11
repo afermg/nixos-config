@@ -1,4 +1,4 @@
-{ pkgs, ... }:
+{ lib, pkgs, ... }:
 let
   emacsPackage = pkgs.emacs.override {
     withImageMagick = true;
@@ -6,9 +6,6 @@ let
   };
 in
 {
-  # `services.emacs.package` controls the daemon executable but does not add
-  # Emacs or emacsclient to the Home Manager profile. Enable the program too
-  # so both commands remain available on PATH.
   programs.emacs = {
     enable = true;
     package = emacsPackage;
@@ -16,7 +13,13 @@ in
 
   services.emacs = {
     enable = true;
-    startWithUserSession = "graphical";
-    package = emacsPackage.pkgs.withPackages (_epkgs: [ ]);
+    startWithUserSession = true;
+  };
+
+  systemd.user.services.emacs = lib.mkIf pkgs.stdenv.isLinux {
+    Service = {
+      Restart = lib.mkForce "always";
+      RestartSec = "5s";
+    };
   };
 }
