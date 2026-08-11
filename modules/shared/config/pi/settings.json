@@ -11,7 +11,8 @@
   ],
   "packages": [
     "git:github.com/afermg/marimo-pair",
-    "git:github.com/afermg/emacs-pair"
+    "git:github.com/afermg/emacs-pair",
+    "npm:pi-subagents@0.46.0"
   ],
   "theme": "dark",
   "lastChangelogVersion": "0.80.10",

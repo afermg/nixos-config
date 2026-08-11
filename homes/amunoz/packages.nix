@@ -29,6 +29,7 @@ in
   # Programming
   mawk
   duckdb
+  nodejs_24 # npm is required to install and reconcile Pi npm packages
   python314
   uv
 
