@@ -79,6 +79,7 @@
  ("json-snatcher" . "b28d1c0670636da6db508d03872d96ffddbc10f2")
  ("keyword-search" . "f8475ecaddb8804a9be6bee47678207c86ac8dee")
  ("kitty-graphics.el" . "7e4faffa32d6f0ef885fceb0a9ecd93b3fe5c43f")
+ ("kkp" . "82b7443e10a2ba287467b62e90b6adb6dd93dc99")
  ("let-alist" . "0652f1c1388b112894bc130351956df5a0838ccf")
  ("llama" . "d430d48e0b5afd2a34b5531f103dcb110c3539c4")
  ("log4e" . "6d71462df9bf595d3861bfb328377346aceed422")

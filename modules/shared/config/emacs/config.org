@@ -142,7 +142,14 @@ I use ~general.el~ to define groups of keybindings under my 'leader' definition.
   (global-set-key (kbd "C--") 'text-scale-decrease)
 #+END_SRC
 
-*** Share clipboard in remote sessions or terminal
+*** Terminal input and clipboard
+Enable the Kitty keyboard protocol so modified keys sent as CSI-u sequences by
+terminals such as Ghostty are decoded correctly.
+#+begin_src emacs-lisp
+  (use-package kkp
+    :hook (tty-setup . global-kkp-mode))
+#+end_src
+
 Clipetty works well for macOS
 #+begin_src emacs-lisp
   (unless window-system
@@ -2698,11 +2705,25 @@ and auto-revert so the buffer refreshes when the directory changes on disk.
      "-l --almost-all --human-readable --group-directories-first --no-group")
     :config
     (put 'dired-find-alternate-file 'disabled nil)
+
+    (defun afm/dired-remember-project ()
+      "Remember the project containing the Dired entry at point."
+      (interactive)
+      (let* ((path (dired-get-file-for-visit))
+             (directory (if (file-directory-p path)
+                            path
+                          (file-name-directory path)))
+             (project (project-current nil directory)))
+        (unless project
+          (user-error "No project found at %s" directory))
+        (project-remember-project project)
+        (message "Remembered project: %s" (project-root project))))
     :bind (:map dired-mode-map
                 ("j" . dired-up-directory)
                 ("l" . dired-find-alternate-file)
                 ("i" . dired-previous-line)
-                ("k" . dired-next-line))
+                ("k" . dired-next-line)
+                ("C-c C-p" . afm/dired-remember-project))
     :hook (dired-mode . auto-revert-mode))
 
   (use-package dired-subtree
@@ -2892,6 +2913,27 @@ Returns the Ghostel buffer."
     :config
     (setq ghostel-kill-buffer-on-exit t)
     (setq ghostel-module-auto-install 'download)
+
+    ;; `ghostel-send-next-key' normally writes C0 control characters as raw
+    ;; bytes.  Route them through Ghostel's encoder instead so intercepted keys
+    ;; such as C-x honor Kitty keyboard mode in the child terminal.
+    (defun afm/ghostel-send-next-key-encode-control (orig-fn)
+      "Make ORIG-FN encode C0 control keys using the terminal's active mode."
+      (let ((event (read-event "Send key: ")))
+        (if (and (integerp event) (<= 0 event) (<= event 31))
+            (let ((key-name
+                   (cond
+                    ((zerop event) "@")
+                    ((<= event 26) (string (+ ?a event -1)))
+                    (t (string (+ ?@ event))))))
+              (ghostel--send-encoded key-name "ctrl"))
+          (let ((unread-command-events (cons event unread-command-events)))
+            (funcall orig-fn)))))
+    (unless (advice-member-p #'afm/ghostel-send-next-key-encode-control
+                             'ghostel-send-next-key)
+      (advice-add 'ghostel-send-next-key :around
+                  #'afm/ghostel-send-next-key-encode-control))
+
     (with-eval-after-load 'meow
       (add-to-list 'meow-mode-state-list '(ghostel-mode . insert))))
 #+end_src
@@ -3507,6 +3549,23 @@ See [[https://github.com/afermg/emacs-llm-dashboard][afermg/emacs-llm-dashboard]
     (setq llm-dashboard-terminal-backend 'ghostel)
     :config
     (afm/llm-dashboard-post-load)
+
+    ;; Some forges, including Overleaf, use an opaque hexadecimal project ID
+    ;; as the remote URL basename.  In that case the checkout directory is a
+    ;; more useful project label than the remote-derived name.
+    (defun afm/llm-dashboard-folder-name-for-opaque-remote (orig-fn cwd)
+      "Use CWD's folder name when ORIG-FN returns an opaque remote ID."
+      (let ((name (funcall orig-fn cwd)))
+        (if (and (stringp name)
+                 (string-match-p "\\`[[:xdigit:]]\\{20,\\}\\'" name))
+            (file-name-nondirectory (directory-file-name cwd))
+          name)))
+    (unless (advice-member-p
+             #'afm/llm-dashboard-folder-name-for-opaque-remote
+             'llm-dashboard--project-name)
+      (advice-add 'llm-dashboard--project-name :around
+                  #'afm/llm-dashboard-folder-name-for-opaque-remote))
+
     (setq llm-dashboard-backend
           (if (assq 'pi llm-dashboard-backends) 'pi 'codex))
     (unless (assq 'pi llm-dashboard-backends)
