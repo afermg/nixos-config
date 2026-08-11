@@ -2,6 +2,7 @@
   pkgs,
   config,
   inputs,
+  amunozInputs ? inputs,
   username ? null,
   ...
 }:
@@ -12,15 +13,14 @@ let
 in
 {
   # nixpkgs.{config,overlays} and the agenix home-manager module are injected
-  # by `homeModules.amunoz` in flake.nix. Keeping them out of here means this
-  # file can be imported across flake boundaries without depending on
-  # module-arg `outputs`, which a consuming flake's extraSpecialArgs would
-  # silently shadow.
+  # by `homeModules.amunoz` in flake.nix. `amunozInputs` keeps this profile's
+  # package pins authoritative even when a consuming flake passes its own
+  # generic `inputs` through Home Manager's extraSpecialArgs.
   home = {
     username = "${user}";
     homeDirectory = "/${home_parent}/${user}";
     stateVersion = "24.05";
-    packages = pkgs.callPackage ./packages.nix { inherit inputs; } ++ [
+    packages = pkgs.callPackage ./packages.nix { inputs = amunozInputs; } ++ [
       # Recover atuin sync after server-side session invalidation. Reads
       # username/password from rbw's "atuin" entry and the BIP39 key from
       # the "atuin key" entry, then runs `atuin login`.

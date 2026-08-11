@@ -103,10 +103,13 @@
       # Used by this flake's own moby system and `homeConfigurations."amunoz@moby"`,
       # and intended for external consumption by other flakes that want to
       # apply the same profile to a user named `amunoz`. Bakes in overlays +
-      # agenix so consumers don't re-plumb them, and so external
-      # `extraSpecialArgs` can't shadow this flake's `outputs`.
+      # agenix so consumers don't re-plumb them. The namespaced input argument
+      # cannot be shadowed by a consumer's generic `extraSpecialArgs.inputs`.
       homeModules.amunoz = {
-        _module.args = { inherit inputs outputs; };
+        _module.args = {
+          inherit inputs outputs;
+          amunozInputs = inputs;
+        };
         imports = [
           agenix.homeManagerModules.default
           ./homes/amunoz/home.nix
