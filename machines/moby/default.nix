@@ -272,9 +272,16 @@
     imports = [
       # ../../modules/nixos/home-manager.nix;
       outputs.homeModules.amunoz
-      ../../modules/shared/config/pi-msg/pi-msg.nix
+      outputs.homeModules.pi-msg
       ../../modules/shared/config/syncthing/sync.nix
     ];
+
+    services.pi-msg = {
+      enable = true;
+      domain = "moby.tail5e510f.ts.net";
+      secretFile = ../../secrets/pi-msg.age;
+      registerLocalAccounts = true;
+    };
   };
 
   home-manager.users.hhakem = {

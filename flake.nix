@@ -124,6 +124,16 @@
         };
       };
 
+      # Reusable host-specific Pi/XMPP bridge. Consumers configure the domain,
+      # encrypted account file, and whether the local registration helper is
+      # appropriate for that host.
+      homeModules.pi-msg = {
+        imports = [
+          agenix.homeManagerModules.default
+          ./modules/shared/config/pi-msg/pi-msg.nix
+        ];
+      };
+
       # packages = forEachSystem (pkgs: import ./pkgs {inherit pkgs;});
       devShells = forEachSystem (pkgs: import ./shell.nix { inherit pkgs inputs; });
       # formatter = forEachSystem (pkgs: pkgs.nixfmt-rfc-style);
@@ -189,8 +199,16 @@
             extraSpecialArgs = { inherit inputs outputs; };
             modules = [
               outputs.homeModules.amunoz
-              ./modules/shared/config/pi-msg/pi-msg.nix
+              outputs.homeModules.pi-msg
               ./modules/shared/config/syncthing/sync.nix
+              {
+                services.pi-msg = {
+                  enable = true;
+                  domain = "moby.tail5e510f.ts.net";
+                  secretFile = ./secrets/pi-msg.age;
+                  registerLocalAccounts = true;
+                };
+              }
             ];
           };
 
@@ -199,6 +217,7 @@
             extraSpecialArgs = { inherit inputs outputs; };
             modules = [
               outputs.homeModules.amunoz
+              outputs.homeModules.pi-msg
               {
                 # Decrypt the existing Overleaf git-bridge credentials with
                 # ~/.ssh/id_ed25519 when this Home Manager profile activates.
@@ -207,6 +226,14 @@
                   path = "/home/amunoz/.netrc";
                   mode = "0600";
                   symlink = false;
+                };
+
+                services.pi-msg = {
+                  enable = true;
+                  domain = "moby.tail5e510f.ts.net";
+                  botUsername = "pi-oppy";
+                  secretFile = ./secrets/pi-msg-oppy.age;
+                  registrationSshHost = "moby.tail5e510f.ts.net";
                 };
               }
             ];
