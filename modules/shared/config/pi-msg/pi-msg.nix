@@ -2,10 +2,12 @@
   config,
   lib,
   pkgs,
+  piMsgInputs,
   ...
 }:
 let
   cfg = config.services.pi-msg;
+  piMsgPkgs = piMsgInputs.nixpkgs.legacyPackages.${pkgs.stdenv.hostPlatform.system};
   inherit (lib)
     mkEnableOption
     mkIf
@@ -18,11 +20,14 @@ let
   configPath = "${config.xdg.configHome}/pi-msg/config.json";
   workspace = "${config.home.homeDirectory}/${cfg.workspaceDirectory}";
 
-  piMsg = pkgs.buildGoModule rec {
+  # Build with the personal flake's pinned Go toolchain. Consumers such as
+  # Neusis may use an older system nixpkgs whose Go cannot satisfy pi-msg's
+  # go.mod requirement.
+  piMsg = piMsgPkgs.buildGoModule rec {
     pname = "pi-msg";
     version = "0.3.0";
 
-    src = pkgs.fetchFromGitHub {
+    src = piMsgPkgs.fetchFromGitHub {
       owner = "zachpmanson";
       repo = "pi-msg";
       rev = "f97c9dd1cbba60fd56a1bbec35bf24cce41ab084";

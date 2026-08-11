@@ -128,6 +128,7 @@
       # encrypted account file, and whether the local registration helper is
       # appropriate for that host.
       homeModules.pi-msg = {
+        _module.args.piMsgInputs = inputs;
         imports = [
           agenix.homeManagerModules.default
           ./modules/shared/config/pi-msg/pi-msg.nix
