@@ -155,14 +155,10 @@ in
 
   systemd.services.podman-hindsight-api = {
     after = [
-      "agenix.service"
       "tailscaled.service"
       "network-online.target"
     ];
-    requires = [
-      "agenix.service"
-      "tailscaled.service"
-    ];
+    requires = [ "tailscaled.service" ];
     preStart = lib.mkAfter ''
       set -eu
       ${pkgs.coreutils}/bin/install -d -m 0700 /run/hindsight
