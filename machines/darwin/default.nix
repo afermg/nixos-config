@@ -187,6 +187,7 @@ in
     useUserPackages = true;
     extraSpecialArgs = {
       inherit inputs outputs;
+      amunozInputs = inputs;
       username = user;
     };
     users.${user} = {

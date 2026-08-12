@@ -221,6 +221,7 @@
               pkgs = pkgsFor.aarch64-darwin;
               extraSpecialArgs = {
                 inherit inputs outputs;
+                amunozInputs = inputs;
                 username = user;
               };
               modules = [
