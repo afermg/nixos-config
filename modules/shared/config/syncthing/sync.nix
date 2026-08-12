@@ -1,4 +1,4 @@
-# Private Syncthing folders shared between moby and both Darwin hosts.
+# Private Syncthing folders shared from moby over direct Tailscale links.
 # This module is imported only by the amunoz@moby Home Manager configuration.
 { ... }:
 {
@@ -22,6 +22,16 @@
           addresses = [ "tcp://100.110.180.8:22000" ];
           autoAcceptFolders = false;
         };
+        oppy = {
+          id = "WUGSSP7-XBIOCPG-3JTGPIV-JSW4GFC-Z3U66BN-CZKTYC3-ADTX2IO-TG3DIQZ";
+          addresses = [ "tcp://100.79.40.39:22000" ];
+          autoAcceptFolders = false;
+        };
+        spirit = {
+          id = "2FPYDCN-NOTA4ZH-VCEORYQ-YL5NUUU-VCL3PXZ-DFMV7GR-DPN6PG5-Y7TPAAX";
+          addresses = [ "tcp://100.126.147.16:22000" ];
+          autoAcceptFolders = false;
+        };
       };
 
       folders."sync" = {
@@ -29,7 +39,10 @@
         label = "Sync";
         path = "/home/amunoz/sync";
         type = "sendreceive";
-        devices = [ "darwin001" "darwin002" ];
+        devices = [
+          "darwin001"
+          "darwin002"
+        ];
         ignorePerms = true;
         fsWatcherEnabled = true;
         ignorePatterns = [ ];
@@ -40,10 +53,35 @@
         label = "Private Docs 01";
         path = "/home/amunoz/.local/share/syncthing/private-docs-01";
         type = "sendreceive";
-        devices = [ "darwin001" "darwin002" ];
+        devices = [
+          "darwin001"
+          "darwin002"
+        ];
         ignorePerms = true;
         fsWatcherEnabled = true;
         ignorePatterns = [ ];
+      };
+
+      folders."hindsight-backups" = {
+        id = "hindsight-backups";
+        label = "Hindsight encrypted backups";
+        path = "/home/amunoz/.local/share/syncthing/hindsight-backups";
+        type = "sendreceive";
+        devices = [
+          "darwin001"
+          "darwin002"
+          "oppy"
+          "spirit"
+        ];
+        ignorePerms = true;
+        fsWatcherEnabled = true;
+        versioning = {
+          type = "staggered";
+          params = {
+            cleanInterval = "3600";
+            maxAge = "15552000";
+          };
+        };
       };
 
       # Use only the direct Tailscale path: no LAN/global discovery, NAT, or relays.

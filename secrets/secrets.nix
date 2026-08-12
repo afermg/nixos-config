@@ -20,6 +20,7 @@ in
   "org-gcal.age".publicKeys = keys;
   "hedgedoc-env.age".publicKeys = keys;
   "pi-msg.age".publicKeys = keys;
+  "hindsight-api-token.age".publicKeys = keys;
   "pi-msg-oppy.age".publicKeys = [
     personal_key
     oppy_key

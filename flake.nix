@@ -144,6 +144,11 @@
           outputs.homeModules.pi-msg
         ];
 
+        hindsightBackupSyncthing = {
+          enable = true;
+          address = "100.79.40.39";
+        };
+
         # Decrypt the existing Overleaf git-bridge credentials with
         # ~/.ssh/id_ed25519 when this Home Manager profile activates.
         age.secrets.netrc-overleaf = {
@@ -164,8 +169,10 @@
 
       # packages = forEachSystem (pkgs: import ./pkgs {inherit pkgs;});
       devShells = forEachSystem (pkgs: import ./shell.nix { inherit pkgs inputs; });
-      # formatter = forEachSystem (pkgs: pkgs.nixfmt-rfc-style);
-      formatter.aarch64-darwin = nixpkgs.legacyPackages.aarch64-darwin.nixfmt-rfc-style;
+      formatter = {
+        aarch64-darwin = nixpkgs.legacyPackages.aarch64-darwin.nixfmt-rfc-style;
+        x86_64-linux = nixpkgs.legacyPackages.x86_64-linux.nixfmt-rfc-style;
+      };
 
       # NixOS configuration entrypoint
       # Available through 'nixos-rebuild --flake .#your-hostname'
@@ -178,6 +185,7 @@
             {
               age.secrets = {
                 tailscale.file = ./secrets/tailscale.age;
+                hindsight-api-token.file = ./secrets/hindsight-api-token.age;
               };
             }
           ];
@@ -249,7 +257,15 @@
           "amunoz@spirit" = lib.homeManagerConfiguration {
             pkgs = pkgsFor.x86_64-linux;
             extraSpecialArgs = { inherit inputs outputs; };
-            modules = [ outputs.homeModules.amunoz ];
+            modules = [
+              outputs.homeModules.amunoz
+              {
+                hindsightBackupSyncthing = {
+                  enable = true;
+                  address = "100.126.147.16";
+                };
+              }
+            ];
           };
 
           "amunoz@karkinos" = lib.homeManagerConfiguration {
