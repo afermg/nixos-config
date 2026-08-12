@@ -100,16 +100,9 @@
       overlays = import ./overlays { inherit inputs outputs; };
 
       # Single source of truth for amunoz's Linux home-manager profile.
-      # Used by this flake's own moby system and `homeConfigurations."amunoz@moby"`,
-      # and intended for external consumption by other flakes that want to
-      # apply the same profile to a user named `amunoz`. Bakes in overlays +
-      # agenix so consumers don't re-plumb them. The namespaced input argument
-      # cannot be shadowed by a consumer's generic `extraSpecialArgs.inputs`.
+      # Used by this flake's own moby system and available to external flakes.
+      # Host-specific settings belong in the consuming flake.
       homeModules.amunoz = {
-        _module.args = {
-          inherit inputs outputs;
-          amunozInputs = inputs;
-        };
         imports = [
           agenix.homeManagerModules.default
           ./homes/amunoz/home.nix
@@ -133,38 +126,6 @@
           agenix.homeManagerModules.default
           ./modules/shared/config/pi-msg/pi-msg.nix
         ];
-      };
-
-      # Complete Oppy profile exported for Neusis and standalone Home Manager.
-      # Keep host-specific secrets and services here so both consumers evaluate
-      # the same module rather than maintaining parallel wiring.
-      homeModules."amunoz-oppy" = {
-        imports = [
-          outputs.homeModules.amunoz
-          outputs.homeModules.pi-msg
-        ];
-
-        hindsightBackupSyncthing = {
-          enable = true;
-          address = "100.79.40.39";
-        };
-
-        # Decrypt the existing Overleaf git-bridge credentials with
-        # ~/.ssh/id_ed25519 when this Home Manager profile activates.
-        age.secrets.netrc-overleaf = {
-          file = ./secrets/netrc-overleaf.age;
-          path = "/home/amunoz/.netrc";
-          mode = "0600";
-          symlink = false;
-        };
-
-        services.pi-msg = {
-          enable = true;
-          domain = "moby.tail5e510f.ts.net";
-          botUsername = "pi-oppy";
-          secretFile = ./secrets/pi-msg-oppy.age;
-          registrationSshHost = "moby.tail5e510f.ts.net";
-        };
       };
 
       # packages = forEachSystem (pkgs: import ./pkgs {inherit pkgs;});
@@ -247,12 +208,6 @@
                 };
               }
             ];
-          };
-
-          "amunoz@oppy" = lib.homeManagerConfiguration {
-            pkgs = pkgsFor.x86_64-linux;
-            extraSpecialArgs = { inherit inputs outputs; };
-            modules = [ outputs.homeModules."amunoz-oppy" ];
           };
 
           "amunoz@spirit" = lib.homeManagerConfiguration {
