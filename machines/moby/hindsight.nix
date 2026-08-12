@@ -53,8 +53,10 @@ let
         -p 127.0.0.1:18888:8888 \
         --env-file /run/hindsight/server.env \
         -e HINDSIGHT_API_MCP_ENABLED=false \
+        -e HINDSIGHT_API_TENANT_EXTENSION=hindsight_api.extensions.builtin.tenant:ApiKeyTenantExtension \
         -e HINDSIGHT_API_LLM_PROVIDER=none \
         -e HINDSIGHT_API_WORKER_ENABLED=false \
+        -e HINDSIGHT_API_WORKER_ID=moby-hindsight-restore-test \
         -v "$test_root/pg0:/home/hindsight/.pg0" \
         -v "$test_root/cache:/home/hindsight/.cache" \
         -v "$test_root/backup.zip:/restore/backup.zip:ro" \
