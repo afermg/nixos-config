@@ -71,6 +71,7 @@ let
       install -d -m 0700 "$test_root/pg0" "$test_root/cache"
       chown -R 1000:100 "$test_root"
       age -d -i /etc/ssh/ssh_host_ed25519_key -o "$test_root/backup.zip" "$archive"
+      chown 1000:100 "$test_root/backup.zip"
       chmod 0600 "$test_root/backup.zip"
 
       podman run -d --name "$container" \
