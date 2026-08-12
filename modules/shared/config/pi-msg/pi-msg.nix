@@ -20,9 +20,7 @@ let
   configPath = "${config.xdg.configHome}/pi-msg/config.json";
   workspace = "${config.home.homeDirectory}/${cfg.workspaceDirectory}";
 
-  # Build with the personal flake's pinned Go toolchain. Consumers such as
-  # Neusis may use an older system nixpkgs whose Go cannot satisfy pi-msg's
-  # go.mod requirement.
+  # pi-msg requires Go 1.26.4, newer than some consuming system flakes.
   piMsg = piMsgPkgs.buildGoModule rec {
     pname = "pi-msg";
     version = "0.3.0";
