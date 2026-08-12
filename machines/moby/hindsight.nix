@@ -10,6 +10,32 @@ let
   backupRoot = "/home/amunoz/.local/share/syncthing/hindsight-backups/moby";
   personalAgeRecipient = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAKdcdlNS1SO+rJHjRQWd33qvqBEZcZR8ypTQUeC9LZ4";
   mobyAgeRecipient = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIClOuXVukvwqgE+UDxJShus+JGprTC8QIoc1G/Ege5KK";
+  healthCheck = pkgs.writeText "hindsight-healthcheck.py" ''
+    import pathlib
+    import time
+    import urllib.request
+
+    start = pathlib.Path("/tmp/hindsight-health-start")
+    ready = pathlib.Path("/tmp/hindsight-health-ready")
+    now = time.monotonic()
+    try:
+        started_at = float(start.read_text())
+    except (FileNotFoundError, ValueError):
+        start.write_text(str(now))
+        started_at = now
+
+    try:
+        with urllib.request.urlopen("http://127.0.0.1:8888/health", timeout=3):
+            pass
+    except Exception:
+        # Podman executes the first probe immediately. Keep its transient
+        # systemd helper successful during the declared startup grace period;
+        # ExecStartPost below independently gates service readiness.
+        if ready.exists() or now - started_at >= 120:
+            raise
+    else:
+        ready.touch()
+  '';
   restoreTest = pkgs.writeShellApplication {
     name = "hindsight-restore-test";
     runtimeInputs = with pkgs; [
@@ -126,17 +152,19 @@ in
           "${dataRoot}/cache:/home/hindsight/.cache"
           "/home/amunoz/.local/state/hindsight-codex:/home/hindsight/.codex"
           "${dataRoot}/backup-staging:/backups"
+          "${healthCheck}:/hindsight-healthcheck.py:ro"
         ];
         extraOptions = [
           "--cap-drop=ALL"
           "--security-opt=no-new-privileges"
           "--pids-limit=512"
           "--memory=24g"
-          ''--health-cmd=python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8888/health', timeout=3)"''
+          "--health-cmd=python /hindsight-healthcheck.py"
           "--health-interval=30s"
           "--health-timeout=5s"
           "--health-retries=5"
           "--health-start-period=120s"
+          "--health-on-failure=kill"
         ];
       };
     };
@@ -179,6 +207,16 @@ in
         ${pkgs.coreutils}/bin/sleep 1
       done
       echo "Tailscale address 100.94.5.85 was not ready" >&2
+      exit 1
+    '';
+    postStart = lib.mkAfter ''
+      for attempt in $(${pkgs.coreutils}/bin/seq 1 180); do
+        if ${pkgs.curl}/bin/curl -fsS --max-time 3 http://100.94.5.85:8888/health >/dev/null; then
+          exit 0
+        fi
+        ${pkgs.coreutils}/bin/sleep 1
+      done
+      echo "Hindsight API did not become healthy" >&2
       exit 1
     '';
     serviceConfig = {
