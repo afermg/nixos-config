@@ -10,6 +10,8 @@ let
   user = if pkgs.stdenv.isLinux then "amunoz" else (if username != null then username else "alan");
   home_parent = if pkgs.stdenv.isLinux then "home" else "Users";
   atuin_daemon_p = if pkgs.stdenv.isLinux then true else false;
+  personalPkgs = amunozInputs.nixpkgs.legacyPackages.${pkgs.stdenv.hostPlatform.system};
+  personalAtuin = personalPkgs.atuin;
 in
 {
   # nixpkgs.{config,overlays} and the agenix home-manager module are injected
@@ -26,7 +28,10 @@ in
       # the "atuin key" entry, then runs `atuin login`.
       (pkgs.writeShellApplication {
         name = "atuin-relogin";
-        runtimeInputs = with pkgs; [ atuin rbw ];
+        runtimeInputs = [
+          personalAtuin
+          pkgs.rbw
+        ];
         text = ''
           set -euo pipefail
           rbw unlock
@@ -117,6 +122,7 @@ in
 
   programs.atuin = {
     enable = true;
+    package = personalAtuin;
     enableFishIntegration = true;
     daemon.enable = atuin_daemon_p;
     flags = [ "--disable-up-arrow" ];
