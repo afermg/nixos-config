@@ -169,8 +169,10 @@
 
       # packages = forEachSystem (pkgs: import ./pkgs {inherit pkgs;});
       devShells = forEachSystem (pkgs: import ./shell.nix { inherit pkgs inputs; });
-      # formatter = forEachSystem (pkgs: pkgs.nixfmt-rfc-style);
-      formatter.aarch64-darwin = nixpkgs.legacyPackages.aarch64-darwin.nixfmt-rfc-style;
+      formatter = {
+        aarch64-darwin = nixpkgs.legacyPackages.aarch64-darwin.nixfmt-rfc-style;
+        x86_64-linux = nixpkgs.legacyPackages.x86_64-linux.nixfmt-rfc-style;
+      };
 
       # NixOS configuration entrypoint
       # Available through 'nixos-rebuild --flake .#your-hostname'
