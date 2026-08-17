@@ -25,13 +25,13 @@ let
   # go.mod requirement.
   piMsg = piMsgPkgs.buildGoModule rec {
     pname = "pi-msg";
-    version = "0.3.0";
+    version = "0.3.0-unstable-2026-08-17";
 
     src = piMsgPkgs.fetchFromGitHub {
       owner = "zachpmanson";
       repo = "pi-msg";
-      rev = "f97c9dd1cbba60fd56a1bbec35bf24cce41ab084";
-      hash = "sha256-wQC+H+qz23b8Jn9gbnlBcILwBPMOGcWEwry5vFUHsy0=";
+      rev = "32868b14ee6ee02b67d5e297558ceac03b193d97";
+      hash = "sha256-ZlwHIYFk/JKye+dPlcbtfNEkgHW7zLHdryRvNzX99Zg=";
     };
 
     vendorHash = "sha256-9wjQDjRsdcuzuWMNar6BDtGWlbyqQUBY8mtv/I+zzU4=";
