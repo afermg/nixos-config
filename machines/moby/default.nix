@@ -51,10 +51,12 @@
     resolved = {
       enable = true;
       settings.Resolve = {
-        domains = [ "~." ];
-        DNSOverTLS = "true";
-        dnssec = "true";
-        fallbackDns = [
+        Domains = [ "~." ];
+        # Permit plaintext fallback so DNS and NTP can recover after an RTC
+        # reset or on networks that block DNS-over-TLS (TCP port 853).
+        DNSOverTLS = "opportunistic";
+        DNSSEC = "allow-downgrade";
+        FallbackDNS = [
           "1.1.1.1#one.one.one.one"
           "1.0.0.1#one.one.one.one"
         ];
