@@ -56,11 +56,6 @@
 
     claude-code.url = "github:sadjow/claude-code-nix";
 
-    overleaf-nix = {
-      url = "github:afermg/overleaf-nix";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
     marimohub-nix = {
       url = "github:afermg/marimohub-nix";
       inputs.nixpkgs.follows = "nixpkgs";

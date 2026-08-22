@@ -27,7 +27,7 @@
   services.marimohub = {
     enable = true;
     listenAddress = "127.0.0.1";
-    # Overleaf uses 3000 internally; keep MarimoHub on a distinct origin.
+    # Keep MarimoHub on its established distinct origin.
     # The Cloudflare dashboard ingress must target http://localhost:18081
     # before this module is re-enabled in ./default.nix.
     port = 18081;

@@ -13,9 +13,9 @@
 # State: HedgeDoc keeps its sqlite db + uploads under
 # /var/lib/hedgedoc/. Back that directory up to keep notes safe.
 #
-# Going public on hedgedoc.quasimorphic.com (future): mirror the
-# Cloudflare-Tunnel setup in ./overleaf.nix — add an age-encrypted
-# tunnel token, a `systemd.services.cloudflared-hedgedoc` unit, and
+# Going public on hedgedoc.quasimorphic.com (future): use the maintained
+# Karkinos connector pattern linked from ./OVERLEAF_ARCHIVE.md — add an
+# age-encrypted tunnel token, a `systemd.services.cloudflared-hedgedoc` unit, and
 # change `domain` below to "hedgedoc.quasimorphic.com". Don't open
 # any inbound ports on the host firewall — the tunnel is outbound-only.
 #
@@ -36,8 +36,8 @@
     enable = true;
     settings = {
       host = "127.0.0.1";
-      # Overleaf occupies the entire 3000-3099 range on moby, so HedgeDoc
-      # lives on 4000 instead of its upstream default of 3000.
+      # Preserve the established Moby origin on 4000 rather than reusing its
+      # upstream default port.
       port = 4000;
 
       # Public hostname HedgeDoc emits in generated links, WebSocket

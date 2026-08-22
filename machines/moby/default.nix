@@ -25,11 +25,12 @@
 
     # You can also split up your configuration and import pieces of it here:
     ./boot.nix
-    ./overleaf.nix
+    # Moby's former Overleaf module is intentionally not imported. Its frozen
+    # setup and the active Oppy/Karkinos links are in ./OVERLEAF_ARCHIVE.md.
     ./ejabberd.nix
     ./marimohub-connector.nix
     ./hindsight.nix
-    # ./marimohub.nix # Disabled: keep Overleaf's internal port 3000 free
+    # ./marimohub.nix # Disabled independently; review its module before enabling.
     # ./hedgedoc.nix # This wasn't as useful
     # ./org-gcal.nix # Removed until we migrate over
     ../common/networking.nix

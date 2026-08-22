@@ -1,3 +1,6 @@
+# ARCHIVED CONFIGURATION — intentionally not imported by ./default.nix.
+# See ./OVERLEAF_ARCHIVE.md for the active Oppy/Karkinos deployment and the
+# safe procedure for restoring service on Moby in the future.
 {
   config,
   inputs,

@@ -1,3 +1,5 @@
+# ARCHIVED CONFIGURATION — retained with ./overleaf.nix for recovery only.
+# The active package definition is linked from ./OVERLEAF_ARCHIVE.md.
 {
   lib,
   stdenv,

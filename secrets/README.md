@@ -212,8 +212,10 @@ leaked value useless instead.
 - [agenix README] — upstream docs, all options for `age.secrets.<name>`.
 - `homes/amunoz/...` — where home-manager-level consumers reference
   the secrets (e.g. the `~/.netrc` path).
-- `machines/moby/overleaf.nix` — current consumer of
-  `cloudflared-overleaf` and `netrc-overleaf`.
+- `machines/moby/overleaf.nix` — archived, non-imported former consumer of
+  `cloudflared-overleaf`; see `machines/moby/OVERLEAF_ARCHIVE.md` for the
+  active Oppy/Karkinos setup. The `netrc-overleaf` secret remains useful to
+  clients of the current Git Bridge.
 
 [agenix]: https://github.com/ryantm/agenix
 [agenix README]: https://github.com/ryantm/agenix?tab=readme-ov-file#age-nix
