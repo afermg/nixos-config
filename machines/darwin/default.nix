@@ -246,9 +246,14 @@ in
       }
     ];
   };
-  # remap keys : Caps -> Esc
+  # Remap the physical Escape key to Caps Lock.
   system.keyboard.enableKeyMapping = true;
-  system.keyboard.remapCapsLockToEscape = true;
+  system.keyboard.userKeyMapping = [
+    {
+      HIDKeyboardModifierMappingSrc = 30064771113; # Escape
+      HIDKeyboardModifierMappingDst = 30064771129; # Caps Lock
+    }
+  ];
 
   # Disable press and hold for diacritics.
   # I want to be able to press and hold j and k
