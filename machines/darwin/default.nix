@@ -120,6 +120,13 @@ in
         _FXShowPosixPathInTitle = false;
       };
 
+      # Teams comes from pkgs.teams. Keep Microsoft AutoUpdate from replacing
+      # that Nix-managed version in the background.
+      CustomUserPreferences."com.microsoft.autoupdate2" = {
+        HowToCheck = "Manual";
+        StartDaemonOnAppLaunch = false;
+      };
+
       trackpad = {
         Clicking = true;
         TrackpadThreeFingerDrag = true;
