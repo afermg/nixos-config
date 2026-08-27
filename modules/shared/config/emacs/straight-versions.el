@@ -38,7 +38,7 @@
  ("emacs-async" . "31cb2fea8f4bc7a593acd76187a89075d8075500")
  ("emacs-deferred" . "2239671d94b38d92e9b28d4e12fd79814cfb9c16")
  ("emacs-hide-mode-line" . "ddd154f1e04d666cd004bf8212ead8684429350d")
- ("emacs-llm-dashboard" . "c9fb77ba00443b4dc676aa198a0abd8c64019581")
+ ("emacs-llm-dashboard" . "b85271e4e27ebc55c070d9f4a7fc70d36ac1c826")
  ("emacs-load-relative" . "b7987c265a64435299d6b02f960ed2c894c4a145")
  ("emacs-loc-changes" . "347423535bce59237ce835103f718463a4a5e3fc")
  ("emacs-oauth2-auto" . "20b3153d9cfb7aafe68a0168647a17373adf5e22")
