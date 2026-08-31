@@ -10,8 +10,6 @@ let
       (throw "Home Manager package '${name}' is missing from pkgs")
       pkgs;
   agenix = inputs.agenix.packages.${pkgs.stdenv.hostPlatform.system}.default;
-  latestPiCodingAgent =
-    inputs.nixpkgs.legacyPackages.${pkgs.stdenv.hostPlatform.system}.pi-coding-agent;
   # zlib12 = (zlib.overrideAttrs(p: {
   #   src = let
   #     version ="1.2.13";
@@ -58,7 +56,7 @@ in
   claude-code
   codex
   agenix
-  latestPiCodingAgent
+  pi-coding-agent
   #openai-whisper-cpp
   #piper-tts
 
