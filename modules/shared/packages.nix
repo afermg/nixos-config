@@ -51,6 +51,7 @@ with pkgs;
 
   # Development
   direnv # Per-project isolated environment
+  racket # Runtime required by Emacs racket-mode/racket-xp-mode
   cargo # rust packages
   rustc # rust compiler
   cmake # c compiler
