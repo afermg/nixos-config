@@ -253,12 +253,16 @@ in
       }
     ];
   };
-  # Remap the physical Escape key to Caps Lock.
+  # Swap the physical Escape and Caps Lock keys.
   system.keyboard.enableKeyMapping = true;
   system.keyboard.userKeyMapping = [
     {
       HIDKeyboardModifierMappingSrc = 30064771113; # Escape
       HIDKeyboardModifierMappingDst = 30064771129; # Caps Lock
+    }
+    {
+      HIDKeyboardModifierMappingSrc = 30064771129; # Caps Lock
+      HIDKeyboardModifierMappingDst = 30064771113; # Escape
     }
   ];
 
