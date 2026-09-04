@@ -2880,6 +2880,18 @@ reserved for Magit.
                        "symbols.map" "src" "vendor"))
     :defer t
     :init
+    ;; Do not trust the daemon's inherited SHELL: launchd can retain /bin/zsh
+    ;; even though Home Manager and nix-darwin configure fish as the login shell.
+    ;; Keep the stable profile symlink instead of a generation-specific store path.
+    (setq ghostel-shell
+          (or (executable-find "fish")
+              (user-error "Ghostel requires fish, but fish is not on Emacs exec-path")))
+    (when (eq system-type 'darwin)
+      ;; Avoid /usr/bin/login -f; it fails as "Login incorrect" when macOS
+      ;; account/session lookup cannot prove the daemon is already this user.
+      (setq ghostel-macos-login-shell nil)
+      (setq ghostel-shell (list ghostel-shell "-l")))
+
     (defun +ghostel/here (arg)
       "Open Ghostel in the current window at the project root.
 
@@ -3037,7 +3049,7 @@ Everything related to M-x compile.
   (require 'eglot)
 
   (dolist (mode '(nix-mode python-mode python-ts-mode markdown-mode gfm-mode
-                  org-mode latex-mode LaTeX-mode envrc-mode racket-mode))
+                  org-mode latex-mode LaTeX-mode envrc-mode))
     (add-hook (intern (format "%s-hook" mode)) #'eglot-ensure))
 
   (setq eglot-autoshutdown t)
@@ -3135,15 +3147,10 @@ Common Lisp environment.
   (use-package racket-mode
     :ensure t
     :mode "\\.rkt\\'"
-    :hook 
-    (racket-mode . racket-xp-mode) ; Enable IDE-like features (xref, docs, errors)
-    (racket-mode . rainbow-delimiters-mode)
-    :config
-    ;; Define custom keybindings if needed, though racket-mode defaults are standard
-    ;; C-c C-c : Run buffer
-    ;; C-c C-k : Stop
-    ;; M-.     : Jump to definition (via racket-xp)
-    )
+    ;; `racket-xp-mode' supplies xref, completion, documentation, and errors
+    ;; without requiring the separately installed racket-langserver used by Eglot.
+    :hook ((racket-mode . racket-xp-mode)
+           (racket-mode . rainbow-delimiters-mode)))
 #+END_SRC
 
 **** Python
