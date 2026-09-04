@@ -4,6 +4,7 @@ _: [
   # "notion"
   # "slack"
   # "telegram"
+  "microsoft-teams"
   # "zoom" # this is managed by the admin :(
 
   # Utility Tools

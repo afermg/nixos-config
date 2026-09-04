@@ -3,12 +3,6 @@
 with pkgs;
 let
   shared-packages = import ../../modules/shared/packages.nix { inherit pkgs; };
-  packages_linux = import ./packages_linux.nix;
-  resolvePackage =
-    name:
-    pkgs.lib.attrByPath (pkgs.lib.splitString "." name)
-      (throw "Home Manager package '${name}' is missing from pkgs")
-      pkgs;
   agenix = inputs.agenix.packages.${pkgs.stdenv.hostPlatform.system}.default;
   latestPiCodingAgent =
     inputs.nixpkgs.legacyPackages.${pkgs.stdenv.hostPlatform.system}.pi-coding-agent;
@@ -91,4 +85,3 @@ in
 ++ pkgs.lib.optionals (!pkgs.stdenv.hostPlatform.isDarwin) [
   ncspot
 ]
-++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux (map resolvePackage packages_linux)
