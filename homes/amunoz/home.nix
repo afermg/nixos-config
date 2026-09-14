@@ -2,7 +2,6 @@
   pkgs,
   config,
   inputs,
-  amunozInputs ? inputs,
   username ? null,
   ...
 }:
@@ -10,26 +9,22 @@ let
   user = if pkgs.stdenv.isLinux then "amunoz" else (if username != null then username else "alan");
   home_parent = if pkgs.stdenv.isLinux then "home" else "Users";
   atuin_daemon_p = if pkgs.stdenv.isLinux then true else false;
-  personalPkgs = amunozInputs.nixpkgs.legacyPackages.${pkgs.stdenv.hostPlatform.system};
-  personalAtuin = personalPkgs.atuin;
 in
 {
-  # nixpkgs.{config,overlays} and the agenix home-manager module are injected
-  # by `homeModules.amunoz` in flake.nix. `amunozInputs` keeps this profile's
-  # package pins authoritative even when a consuming flake passes its own
-  # generic `inputs` through Home Manager's extraSpecialArgs.
+  # `homeModules.amunoz` imports the agenix Home Manager module and configures
+  # overlays. The importing flake supplies its ordinary `pkgs` and `inputs`.
   home = {
     username = "${user}";
     homeDirectory = "/${home_parent}/${user}";
     stateVersion = "24.05";
-    packages = pkgs.callPackage ./packages.nix { inputs = amunozInputs; } ++ [
+    packages = pkgs.callPackage ./packages.nix { inherit inputs; } ++ [
       # Recover atuin sync after server-side session invalidation. Reads
       # username/password from rbw's "atuin" entry and the BIP39 key from
       # the "atuin key" entry, then runs `atuin login`.
       (pkgs.writeShellApplication {
         name = "atuin-relogin";
         runtimeInputs = [
-          personalAtuin
+          pkgs.atuin
           pkgs.rbw
         ];
         text = ''
@@ -123,7 +118,7 @@ in
 
   programs.atuin = {
     enable = true;
-    package = personalAtuin;
+    package = pkgs.atuin;
     enableFishIntegration = true;
     daemon.enable = atuin_daemon_p;
     flags = [ "--disable-up-arrow" ];
