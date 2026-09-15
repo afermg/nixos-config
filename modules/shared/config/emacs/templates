@@ -1,0 +1,16 @@
+(today (format-time-string "%Y-%m-%d"))
+
+org-mode
+(hugo-header "# -*- mode: snippet -*-
+# name: hugo-frontmatter
+# key: hfm
+# --
+#+author: Alán F. Muñoz
+#+hugo_publishdate: `(format-time-string \"%Y-%m-%dT%T%z\")`
+#+date: `(format-time-string \"%Y-%m-%dT%T%z\")`
+#+hugo_auto_set_lastmod: t
+#+filetags: " (s "tags") "
+#+toc: headlines
+#+draft: false
+#+hugo_section: ${2:post}
+#+hugo_custom_front_matter: :summary \"I NEED A SUMMARY\"")
