@@ -2249,19 +2249,72 @@ Replace/delete pair of parens ([[https://emacs.stackexchange.com/a/37648][source
     (backward-char 1))
 #+end_src
 
-Open the org link at point in eww in another window, keeping point in the
-source buffer.
+Copy link targets at point across common modes, and open Org links in eww in
+another window while keeping point in the source buffer.  =C-c w= is a
+user-reserved global binding and is intentionally distinct from Org's
+=C-c C-w= refile binding and Ghostel's =C-c M-w= copy-scrollback binding.
 
 #+begin_src emacs-lisp
-  (defun my/org-copy-link-at-point ()
-    "Copy the raw URL of the org-mode link at point to the kill ring."
+  (defun afm--link-string-p (candidate)
+    "Return non-nil when CANDIDATE looks like a link target."
+    (and (stringp candidate)
+         (string-match-p
+          "\\`\\(?:[[:alpha:]][[:alnum:]+.-]*:\\|www\\.\\)"
+          candidate)))
+
+  (defun afm--link-text-property-at-point (property)
+    "Return link-like PROPERTY at point or immediately before point."
+    (let ((value (or (get-text-property (point) property)
+                     (and (> (point) (point-min))
+                          (get-text-property (1- (point)) property)))))
+      (and (afm--link-string-p value) value)))
+
+  (defun afm--button-link-at-point ()
+    "Return a link target from the button at point, when available."
+    (when-let ((button (or (button-at (point))
+                           (and (> (point) (point-min))
+                                (button-at (1- (point)))))))
+      (seq-some
+       (lambda (property)
+         (let ((value (button-get button property)))
+           (and (afm--link-string-p value) value)))
+       '(url shr-url help-echo))))
+
+  (defun afm/link-at-point ()
+    "Return the link target at point, or nil when none is available.
+
+This recognizes descriptive Org and Markdown links, Ghostel OSC 8 links,
+SHR-rendered links used by EWW and mail readers, Emacs buttons carrying a URL,
+and plain-text URLs."
+    (or
+     (when (derived-mode-p 'org-mode)
+       (let ((context (org-element-context)))
+         (when (eq (org-element-type context) 'link)
+           (org-element-property :raw-link context))))
+     (when (and (derived-mode-p 'markdown-mode)
+                (fboundp 'markdown-link-url))
+       (ignore-errors (markdown-link-url)))
+     (when (and (derived-mode-p 'ghostel-mode)
+                (fboundp 'ghostel--uri-at-pos))
+       (ghostel--uri-at-pos (point)))
+     (afm--link-text-property-at-point 'shr-url)
+     (afm--link-text-property-at-point 'help-echo)
+     (afm--button-link-at-point)
+     (thing-at-point 'url t)))
+
+  (defun afm/copy-link-at-point ()
+    "Copy the link target at point to the kill ring and system clipboard."
     (interactive)
-    (let ((ctx (org-element-context)))
-      (if (eq (org-element-type ctx) 'link)
-          (let ((url (org-element-property :raw-link ctx)))
-            (kill-new url)
-            (message "Copied: %s" url))
-        (user-error "No link at point"))))
+    (if-let ((link (afm/link-at-point)))
+        (progn
+          (kill-new (substring-no-properties link))
+          ;; Do not echo the target: URLs may contain private access tokens.
+          (message "Copied link at point"))
+      (user-error "No link at point")))
+
+  ;; Preserve the old command name for callers outside this configuration.
+  (defalias 'my/org-copy-link-at-point #'afm/copy-link-at-point)
+  (global-set-key (kbd "C-c w") #'afm/copy-link-at-point)
 
   (defun my/org-open-link-in-eww-other-window ()
     "Open the org-mode link at point in eww in another window.
