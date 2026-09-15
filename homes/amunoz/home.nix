@@ -215,8 +215,8 @@ in
     '';
   };
 
-  # SMTP: port 587 is blackholed on this network (TCP accepts but no banner
-  # arrives, hangs on recvfrom), so both accounts use 465 / implicit TLS.
+  # MXroute and Gmail use port 465 with implicit TLS. Purdue's Microsoft 365
+  # account uses its required submission endpoint on port 587 with STARTTLS.
   programs.msmtp.enable = true;
   accounts.email = {
     maildirBasePath = ".mail";
@@ -254,8 +254,40 @@ in
         };
         msmtp.enable = true;
       };
+      purdue = {
+        realName = "Alán F. Muñoz";
+        address = "amunozgo@purdue.edu";
+        userName = "amunozgo@purdue.edu";
+        passwordCommand = [
+          "oama"
+          "access"
+          "amunozgo@purdue.edu"
+        ];
+        smtp = {
+          host = "smtp.office365.com";
+          port = 587;
+          tls.useStartTls = true;
+        };
+        msmtp = {
+          enable = true;
+          extraConfig.auth = "xoauth2";
+        };
+      };
     };
   };
+
+  # OAuth token broker for Purdue's Microsoft 365 account. The Thunderbird
+  # desktop client ID is public; refresh/access tokens are GPG-encrypted.
+  xdg.configFile."oama/config.yaml".text = ''
+    encryption:
+      tag: GPG
+      contents: 82A2AEF88DE97902
+
+    services:
+      microsoft:
+        client_id: 9e5f94bc-e8a4-4e73-b8be-63364c29d753
+        tenant: common
+  '';
 
   programs.git = {
     enable = true;

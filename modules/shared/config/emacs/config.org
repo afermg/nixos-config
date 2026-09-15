@@ -3907,9 +3907,9 @@ Deploy a web server to read feed from my phone.
 ** Email (mu4e)
 Mail client using mu (maildir-utils) as the backend, mbsync (isync) for IMAP sync, and msmtp for sending.
 
-System dependencies (in packages.nix): =mu=, =mu.mu4e=, =isync=, =msmtp=.
+System dependencies (in packages.nix): =mu=, =mu.mu4e=, =isync=, =msmtp=, and =oama=.
 
-Run =mbsync -a= to do the initial sync, then =mu init --maildir=~/.mail --my-address=alan@quasimorphic.com --my-address=amunozgo@broadinstitute.org= and =mu index= to build the database.
+Run =mbsync -a= to do the initial sync, then =mu init --maildir=~/.mail --my-address=alan@quasimorphic.com --my-address=amunozgo@broadinstitute.org --my-address=amunozgo@purdue.edu= and =mu index= to build the database. After each sync, =mirror-purdue-mail= deduplicates every synchronized Purdue folder into the durable =INBOX.Purdue= archive on quasimorphic; the second quasimorphic sync pulls newly archived copies into mu4e immediately.
 
 The =mu= backend and =mu4e= Emacs package come from nixpkgs's matching =mu= outputs. Installing both =mu= and =mu.mu4e= keeps their versions aligned and provides the generated =mu4e-config.el=, so no Straight checkout or hand-written version expectation is needed.
 
@@ -3921,7 +3921,8 @@ The =mu= backend and =mu4e= Emacs package come from nixpkgs's matching =mu= outp
     :bind ("C-c m" . mu4e)
     :config
     (setq mu4e-maildir (expand-file-name "~/.mail"))
-    (setq mu4e-get-mail-command "mbsync -a")
+    (setq mu4e-get-mail-command
+          "mbsync -a && ~/.local/bin/mirror-purdue-mail && mbsync quasimorphic")
     (setq mu4e-update-interval 300)
 
     (setq mu4e-change-filenames-when-moving t)
@@ -3935,7 +3936,8 @@ The =mu= backend and =mu4e= Emacs package come from nixpkgs's matching =mu= outp
 
     (setq mu4e-user-mail-address-list
           '("alan@quasimorphic.com"
-            "amunozgo@broadinstitute.org"))
+            "amunozgo@broadinstitute.org"
+            "amunozgo@purdue.edu"))
 
     ;; Use msmtp for sending
     (setq sendmail-program "msmtp")
@@ -3954,7 +3956,10 @@ The =mu= backend and =mu4e= Emacs package come from nixpkgs's matching =mu= outp
             :name "quasimorphic"
             :match-func (lambda (msg)
                           (when msg
-                            (string-prefix-p "/quasimorphic" (mu4e-message-field msg :maildir))))
+                            (let ((maildir (mu4e-message-field msg :maildir)))
+                              (and (string-prefix-p "/quasimorphic" maildir)
+                                   (not (string-prefix-p
+                                         "/quasimorphic/Inbox/Purdue" maildir))))))
             :vars '((user-mail-address  . "alan@quasimorphic.com")
                     (user-full-name     . "Alán F. Muñoz")
                     (mu4e-sent-folder   . "/quasimorphic/Sent")
@@ -3971,28 +3976,44 @@ The =mu= backend and =mu4e= Emacs package come from nixpkgs's matching =mu= outp
                     (mu4e-sent-folder   . "/broad/[Gmail]/Sent Mail")
                     (mu4e-drafts-folder . "/broad/[Gmail]/Drafts")
                     (mu4e-trash-folder  . "/broad/[Gmail]/Trash")
-                    (mu4e-refile-folder . "/broad/Inbox")))))
+                    (mu4e-refile-folder . "/broad/Inbox")))
+           (make-mu4e-context
+            :name "purdue"
+            :match-func (lambda (msg)
+                          (when msg
+                            (let ((maildir (mu4e-message-field msg :maildir)))
+                              (or (string-prefix-p "/purdue" maildir)
+                                  (string-prefix-p "/quasimorphic/Inbox/Purdue" maildir)))))
+            :vars '((user-mail-address  . "amunozgo@purdue.edu")
+                    (user-full-name     . "Alán F. Muñoz")
+                    (mu4e-sent-folder   . "/purdue/Sent Items")
+                    (mu4e-drafts-folder . "/purdue/Drafts")
+                    (mu4e-trash-folder  . "/purdue/Deleted Items")
+                    (mu4e-refile-folder . "/purdue/Inbox")))))
     (setq mu4e-context-policy 'pick-first)
     ;; nil makes compose evaluate per-message match-funcs against the parent
     ;; message, so replies route to the account that received the thread
     ;; instead of inheriting the current context.
     (setq mu4e-compose-context-policy nil)
 
-    ;; Maildir shortcuts across both accounts
+    ;; Maildir shortcuts across all accounts
     (setq mu4e-maildir-shortcuts
           '((:maildir "/quasimorphic/Inbox"  :key ?i)
             (:maildir "/quasimorphic/Sent"   :key ?s)
             (:maildir "/quasimorphic/Drafts" :key ?d)
             (:maildir "/broad/Inbox"         :key ?b)
             (:maildir "/broad/[Gmail]/Sent Mail" :key ?B)
-            (:maildir "/broad/[Gmail]/Drafts" :key ?D)))
+            (:maildir "/broad/[Gmail]/Drafts" :key ?D)
+            (:maildir "/purdue/Inbox"        :key ?p)
+            (:maildir "/purdue/Sent Items"   :key ?P)
+            (:maildir "/quasimorphic/Inbox/Purdue" :key ?a)))
 
     ;; Bookmarks
     (setq mu4e-bookmarks
-          '((:name "Unread" :query "flag:unread AND (maildir:/quasimorphic/Inbox OR maildir:/broad/Inbox)" :key ?u)
-            (:name "Today"  :query "date:today..now  AND (maildir:/quasimorphic/Inbox OR maildir:/broad/Inbox)" :key ?t)
-            (:name "Week"   :query "date:7d..now  AND (maildir:/quasimorphic/Inbox OR maildir:/broad/Inbox)" :key ?w)
-            (:name "Drafts" :query "maildir:/quasimorphic/Drafts OR maildir:/broad/[Gmail]/Drafts" :key ?d)))
+          '((:name "Unread" :query "flag:unread AND (maildir:/quasimorphic/Inbox OR maildir:/broad/Inbox OR maildir:/purdue/Inbox)" :key ?u)
+            (:name "Today"  :query "date:today..now  AND (maildir:/quasimorphic/Inbox OR maildir:/broad/Inbox OR maildir:/purdue/Inbox)" :key ?t)
+            (:name "Week"   :query "date:7d..now  AND (maildir:/quasimorphic/Inbox OR maildir:/broad/Inbox OR maildir:/purdue/Inbox)" :key ?w)
+            (:name "Drafts" :query "maildir:/quasimorphic/Drafts OR maildir:/broad/[Gmail]/Drafts OR maildir:/purdue/Drafts" :key ?d)))
 
     ;; Show images inline
     (setq mu4e-view-show-images t)
@@ -4070,30 +4091,38 @@ The =mu= backend and =mu4e= Emacs package come from nixpkgs's matching =mu= outp
     ;; silently sends from the wrong address.  This hook is the last line
     ;; of defense, fired by message-mode just before delivery.
     (defvar afm/mu4e-my-addresses
-      '("alan@quasimorphic.com" "amunozgo@broadinstitute.org"))
+      '("alan@quasimorphic.com"
+        "amunozgo@broadinstitute.org"
+        "amunozgo@purdue.edu"))
 
     (defun afm/mu4e--canonical-from-for (recipient)
-      "More-frequent of Alán's own From addresses across the 50 most
+      "Most frequent of Alán's own From addresses across the 50 most
 recent messages Alán sent where RECIPIENT is in the thread.  nil if no
 clear winner or no history.  Restricting to Alán-sent messages avoids
-counting other people's broad/personal addresses as evidence."
+counting other people's work/personal addresses as evidence."
       (let* ((query (format
-                     "(to:%s OR from:%s) AND (from:amunozgo@broadinstitute.org OR from:alan@quasimorphic.com)"
+                     "(to:%s OR from:%s) AND (from:amunozgo@broadinstitute.org OR from:alan@quasimorphic.com OR from:amunozgo@purdue.edu)"
                      recipient recipient))
              (cmd (format
                    "mu find %s --fields f --sortfield=date --reverse 2>/dev/null | head -50"
                    (shell-quote-argument query)))
              (out (downcase (shell-command-to-string cmd)))
-             (broad 0) (personal 0) (idx 0))
-        (while (string-match "amunozgo@broadinstitute\\.org" out idx)
-          (cl-incf broad) (setq idx (match-end 0)))
-        (setq idx 0)
-        (while (string-match "alan@quasimorphic\\.com" out idx)
-          (cl-incf personal) (setq idx (match-end 0)))
-        (cond
-         ((and (> broad personal) (> broad 0))    "amunozgo@broadinstitute.org")
-         ((and (> personal broad) (> personal 0)) "alan@quasimorphic.com")
-         (t nil))))
+             (addresses '("alan@quasimorphic.com"
+                          "amunozgo@broadinstitute.org"
+                          "amunozgo@purdue.edu"))
+             counts)
+        (dolist (address addresses)
+          (let ((count 0)
+                (idx 0)
+                (pattern (regexp-quote address)))
+            (while (string-match pattern out idx)
+              (cl-incf count)
+              (setq idx (match-end 0)))
+            (push (cons address count) counts)))
+        (setq counts (sort counts (lambda (a b) (> (cdr a) (cdr b)))))
+        (when (and (> (cdar counts) 0)
+                   (> (cdar counts) (cdr (cadr counts))))
+          (caar counts))))
 
     (defun afm/mu4e-verify-from-before-send ()
       "Abort message-send when From doesn't match thread history.

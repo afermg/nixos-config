@@ -91,8 +91,9 @@ with pkgs;
   # email
   mu # Maildir indexer and mu4e backend
   mu.mu4e # Matching Emacs frontend, including generated mu4e-config.el
-  isync # IMAP sync (mbsync)
+  (isync.override { withCyrusSaslXoauth2 = true; }) # IMAP sync with Microsoft OAuth
   msmtp # SMTP client for sending mail
+  oama # OAuth token broker for Microsoft 365 IMAP/SMTP
   rbw # Unofficial Bitwarden CLI with background agent
   pinentry-curses # PIN/password entry for terminal (needed by rbw over SSH)
   gnupg # Required by Emacs's plstore for encrypted token storage (org-gcal OAuth tokens)

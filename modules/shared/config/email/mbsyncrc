@@ -48,3 +48,29 @@ Patterns * !"[Gmail]/All Mail"
 Create Both
 Expunge Both
 SyncState *
+
+# === Account: purdue ===
+IMAPAccount purdue
+Host outlook.office365.com
+Port 993
+User amunozgo@purdue.edu
+PassCmd "oama access amunozgo@purdue.edu"
+TLSType IMAPS
+CertificateFile /etc/ssl/certs/ca-certificates.crt
+AuthMechs XOAUTH2
+
+IMAPStore purdue-remote
+Account purdue
+
+MaildirStore purdue-local
+SubFolders Verbatim
+Path ~/.mail/purdue/
+Inbox ~/.mail/purdue/Inbox
+
+Channel purdue
+Far :purdue-remote:
+Near :purdue-local:
+Patterns * !Calendar !Calendar/* !Contacts !Journal !Notes !Outbox !Tasks
+Create Both
+Expunge Both
+SyncState *
