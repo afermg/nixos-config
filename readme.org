@@ -23,6 +23,9 @@ Available entrypoints:
 - =alan@darwin001= (Darwin)
 - =amunozgo@darwin002= (Darwin)
 
+** Inspect Syncthing
+See [[file:docs/syncthing.md][Inspecting Syncthing manually]] for local GUI access, secure SSH forwarding to =moby=, synchronization checks, and troubleshooting.
+
 ** System rebuild
 System-level changes (kernel/services on NixOS; Homebrew/dock/macOS defaults/launchd on Darwin) still go through the platform-specific rebuild.
 

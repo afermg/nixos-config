@@ -191,6 +191,7 @@
   users.users.amunoz = {
     shell = pkgs.fish;
     isNormalUser = true;
+    linger = true;
     description = "Alan Munoz";
     extraGroups = [
       "networkmanager"

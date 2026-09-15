@@ -62,6 +62,17 @@
         ignorePatterns = [ ];
       };
 
+      folders."purdue-h1b-i9-preparation" = {
+        id = "purdue-h1b-i9-preparation";
+        label = "Purdue H-1B I-9 preparation";
+        path = "/home/amunoz/Documents/broad/drafts/admin_applications/purdue_h1b/i9_preparation";
+        type = "sendreceive";
+        devices = [ "darwin001" ];
+        ignorePerms = true;
+        fsWatcherEnabled = true;
+        ignorePatterns = [ ];
+      };
+
       folders."hindsight-backups" = {
         id = "hindsight-backups";
         label = "Hindsight encrypted backups";

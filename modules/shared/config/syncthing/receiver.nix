@@ -89,6 +89,17 @@ in
               fsWatcherEnabled = true;
             };
           })
+          (lib.mkIf (pkgs.stdenv.hostPlatform.isDarwin && config.home.username == "alan") {
+            "purdue-h1b-i9-preparation" = {
+              id = "purdue-h1b-i9-preparation";
+              label = "Purdue H-1B I-9 preparation";
+              path = "${config.home.homeDirectory}/Documents/broad/drafts/admin_applications/purdue_h1b/i9_preparation";
+              type = "sendreceive";
+              devices = [ "moby" ];
+              ignorePerms = true;
+              fsWatcherEnabled = true;
+            };
+          })
         ];
 
         options = {
