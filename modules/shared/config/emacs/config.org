@@ -4252,45 +4252,78 @@ Cutting edge LLM models.
 
 #+begin_src emacs-lisp
   ;; Gemini is still used by agent-shell below; gptel itself uses the
-  ;; ChatGPT subscription backend.
+  ;; ChatGPT subscription backend through Pi's shared OAuth credential.
   (setq gemini-key-file "~/.gemini_key")
   (setq claude-key-file "~/.claude_token")
+
+  (defvar afm/gptel-pi-openai-auth-cache nil
+    "Short-lived Pi OpenAI credential used by gptel.")
+
+  (defun afm/gptel--pi-openai-auth ()
+    "Return a current OpenAI credential obtained through Pi's SDK."
+    (let ((expires-at (plist-get afm/gptel-pi-openai-auth-cache :expiresAt)))
+      (if (and (numberp expires-at)
+               (> expires-at (+ (float-time) 60)))
+          afm/gptel-pi-openai-auth-cache
+        (with-temp-buffer
+          (let ((status
+                 (condition-case nil
+                     (call-process "gptel-pi-openai-auth" nil (list t nil) nil)
+                   (file-error nil))))
+            (unless (and (integerp status) (zerop status))
+              (erase-buffer)
+              (user-error
+               "Pi OpenAI authentication is unavailable; run /login in Pi"))
+            (goto-char (point-min))
+            (let ((credential
+                   (condition-case nil
+                       (json-parse-buffer :object-type 'plist)
+                     (error nil))))
+              (erase-buffer)
+              (unless (and (stringp (plist-get credential :accessToken))
+                           (stringp (plist-get credential :accountId))
+                           (numberp (plist-get credential :expiresAt)))
+                (user-error "Pi returned an invalid OpenAI credential"))
+              (setq afm/gptel-pi-openai-auth-cache credential)))))))
+
+  (defun afm/gptel--pi-openai-header (_info)
+    "Build gptel request headers from Pi's OpenAI OAuth credential."
+    (let ((credential (afm/gptel--pi-openai-auth)))
+      `(("Authorization" .
+         ,(concat "Bearer " (plist-get credential :accessToken)))
+        ("Originator" . "gptel")
+        ("ChatGPT-Account-Id" . ,(plist-get credential :accountId)))))
+
+  (defun afm/gptel-refresh-pi-openai-auth ()
+    "Discard gptel's cache and reload the shared credential from Pi."
+    (interactive)
+    (setq afm/gptel-pi-openai-auth-cache nil)
+    (afm/gptel--pi-openai-auth)
+    (message "Reloaded gptel authentication from Pi"))
 
   (use-package gptel
     :straight (:host github :repo "karthink/gptel"
                      :branch "master")
     :config
     (setq gptel-default-mode #'org-mode
-          gptel-model 'gpt-5.4-mini
-          gptel-backend (gptel-make-openai-oauth "OpenAI-sub")))
-
-  (defun afm/gptel-openai-device-login ()
-    "Log in to the active gptel OpenAI backend using device authorization.
-
-Use this command from terminal Emacs or when the Emacs host has no
-browser.  It displays a one-time code for
-https://auth.openai.com/codex/device."
-    (interactive)
-    (require 'gptel-openai-oauth)
-    (gptel-openai-oauth-login nil 'device))
-    ;; OAuth access/refresh tokens are credentials; gptel creates the
-    ;; token file with the process umask, so tighten it after every write.
-    (define-advice gptel-oauth--write-token
-        (:after (file _token) afm/restrict-token-file)
-      (set-file-modes file #o600))
-    (when (file-exists-p gptel--openai-oauth-token-file)
-      (set-file-modes gptel--openai-oauth-token-file #o600))
+          gptel-model 'gpt-5.6-sol
+          gptel-backend
+          (gptel-make-openai-oauth
+              "OpenAI-sub"
+            :header #'afm/gptel--pi-openai-header)))
 #+end_src
 
 ****  gptel-magit
-The OpenAI backend above uses the ChatGPT subscription through OAuth; it
-does not use an OpenAI API key.  Authenticate each computer independently with
-=M-x gptel-openai-oauth-login=, or from a terminal with
-=M-x afm/gptel-openai-device-login=.  gptel stores the resulting credential locally
-at =~/.emacs.d/.cache/gptel-openai/openai-oauth-token=, and the advice above
-keeps that file at mode =0600=.  Do not copy or commit this token.
+The OpenAI backend above uses the ChatGPT subscription through Pi's OAuth
+credential store.  Authenticate once in Pi with =/login= and select OpenAI
+Codex.  The =gptel-pi-openai-auth= helper asks Pi's SDK for a current credential,
+so expiration and refresh-token rotation remain serialized through
+=~/.pi/agent/auth.json=.  gptel keeps only a short-lived in-memory cache and no
+longer writes its own token file.  After changing Pi accounts, run
+=M-x afm/gptel-refresh-pi-openai-auth=.
 
-No OpenAI API key or Agenix secret is required for this Emacs integration.
+No independent gptel login, OpenAI API key, or Agenix secret is required for
+this Emacs integration.
 
 Simple but working gptel+magit integration. Replaced gptcommit-mode
 

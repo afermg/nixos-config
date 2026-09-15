@@ -12,6 +12,7 @@ let
   atuin_daemon_p = if pkgs.stdenv.isLinux then true else false;
   personalPkgs = amunozInputs.nixpkgs.legacyPackages.${pkgs.stdenv.hostPlatform.system};
   personalAtuin = personalPkgs.atuin;
+  personalPiCodingAgent = personalPkgs.pi-coding-agent;
 in
 {
   # nixpkgs.{config,overlays} and the agenix home-manager module are injected
@@ -39,6 +40,15 @@ in
           pass=$(rbw get atuin)
           key=$(rbw get 'atuin key')
           atuin login -u "$user" -p "$pass" -k "$key"
+        '';
+      })
+      (pkgs.writeShellApplication {
+        name = "gptel-pi-openai-auth";
+        runtimeInputs = [ pkgs.nodejs_24 ];
+        text = ''
+          exec node \
+            ${../../modules/shared/config/pi/gptel-openai-auth.mjs} \
+            ${personalPiCodingAgent}/lib/node_modules/pi-monorepo/dist/index.js
         '';
       })
     ];
