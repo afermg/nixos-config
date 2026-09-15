@@ -4019,6 +4019,8 @@ The =mu= backend and =mu4e= Emacs package come from nixpkgs's matching =mu= outp
     (defun mu4e-rbw-unlock ()
       "Pop up a terminal to unlock rbw, then open mu4e."
       (interactive)
+      ;; `term-mode' and `term-exec' are not autoloaded in Emacs 30.
+      (require 'term)
       (let ((buf (get-buffer-create "*rbw-unlock*")))
         (with-current-buffer buf
           (let ((inhibit-read-only t)) (erase-buffer))
