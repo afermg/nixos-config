@@ -16,5 +16,5 @@
   ],
   "theme": "dark",
   "lastChangelogVersion": "0.80.10",
-  "hideThinkingBlock": true
+  "hideThinkingBlock": false
 }
