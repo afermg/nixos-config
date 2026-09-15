@@ -1,4 +1,16 @@
 /.agent-shell/
+
+# Local Pi agent/session state (may contain transcripts and prompts)
+/.pi/
+
+# Generated tool caches and Python bytecode
+/.ruff_cache/
+__pycache__/
+*.py[cod]
+
+# Local Emacs/llm-dashboard state
+**/dashboard-manifest.el
+
 # Ignore everything under .claude/ (runtime state, settings.local.json,
 # worktrees, history) EXCEPT project-scoped skills authored for this repo.
 # The /* excludes only direct children rather than the directory itself, so
