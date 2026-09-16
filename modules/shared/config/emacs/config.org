@@ -4306,7 +4306,7 @@ Cutting edge LLM models.
                      :branch "master")
     :config
     (setq gptel-default-mode #'org-mode
-          gptel-model 'gpt-5.6-sol
+          gptel-model 'gpt-6-astra
           gptel-backend
           (gptel-make-openai-oauth
               "OpenAI-sub"

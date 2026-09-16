@@ -13,18 +13,41 @@ export default function (pi: ExtensionAPI) {
     apiKey: "$OPENAI_CODEX_API_KEY",
     models: [
       {
-        id: "gpt-5.6-sol",
-        name: "GPT-5.6-Sol",
+        id: "gpt-6-astra",
+        name: "GPT-6 Astra",
         reasoning: true,
         thinkingLevelMap: {
           off: null,
           minimal: "low",
+          low: "low",
+          medium: "medium",
+          high: "high",
           xhigh: "xhigh",
+          max: "max",
         },
         input: ["text", "image"],
-        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        cost: {
+          input: 10,
+          output: 50,
+          cacheRead: 1,
+          cacheWrite: 12.5,
+          tiers: [
+            {
+              inputTokensAbove: 272000,
+              input: 20,
+              output: 75,
+              cacheRead: 2,
+              cacheWrite: 25,
+            },
+          ],
+        },
         contextWindow: 272000,
         maxTokens: 128000,
+        compat: {
+          supportsOpenAIGrammarTools: true,
+          supportsAdditionalTools: true,
+          supportsToolSearch: true,
+        },
       },
       {
         id: "gpt-5.5",
