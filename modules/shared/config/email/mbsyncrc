@@ -18,7 +18,20 @@ Inbox ~/.mail/quasimorphic/Inbox
 Channel quasimorphic
 Far :quasimorphic-remote:
 Near :quasimorphic-local:
-Patterns *
+# Separate channels share the same bidirectional policy; Junk is native spam.
+Patterns * !INBOX/*
+Sync All
+Create Both
+Expunge Both
+SyncState *
+
+# Moves, flags and message deletions in Inbox children also propagate both ways.
+# mirror-mail keeps import receipts so removed messages are not uploaded again.
+Channel quasimorphic-archives
+Far :quasimorphic-remote:
+Near :quasimorphic-local:
+Patterns INBOX/*
+Sync All
 Create Both
 Expunge Both
 SyncState *
@@ -47,6 +60,22 @@ Near :broad-local:
 Patterns * !"[Gmail]/All Mail"
 Create Both
 Expunge Both
+SyncState *
+
+# Pull Gmail's canonical All Mail mailbox into a cache outside mu4e's maildir.
+# This captures messages that have no visible label without adding duplicate
+# search results to mu. Pull-only prevents local state from changing Gmail.
+MaildirStore broad-archive-local
+SubFolders Verbatim
+Path ~/.cache/mirror-mail/broad/
+Inbox ~/.cache/mirror-mail/broad/Inbox
+
+Channel broad-all-mail
+Far :broad-remote:
+Near :broad-archive-local:
+Patterns "[Gmail]/All Mail"
+Sync Pull
+Create Near
 SyncState *
 
 # === Account: purdue ===

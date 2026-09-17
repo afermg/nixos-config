@@ -3962,7 +3962,7 @@ Mail client using mu (maildir-utils) as the backend, mbsync (isync) for IMAP syn
 
 System dependencies (in packages.nix): =mu=, =mu.mu4e=, =isync=, =msmtp=, and =oama=.
 
-Run =mbsync -a= to do the initial sync, then =mu init --maildir=~/.mail --my-address=alan@quasimorphic.com --my-address=amunozgo@broadinstitute.org --my-address=amunozgo@purdue.edu= and =mu index= to build the database. After each sync, =mirror-purdue-mail= deduplicates every synchronized Purdue folder into the durable =INBOX.Purdue= archive on quasimorphic; the second quasimorphic sync pulls newly archived copies into mu4e immediately.
+Run =mbsync -a= to do the initial sync, then =mu init --maildir=~/.mail --my-address=alan@quasimorphic.com --my-address=amunozgo@broadinstitute.org --my-address=amunozgo@purdue.edu= and =mu index= to build the database. A pull-only channel downloads Gmail's canonical =[Gmail]/All Mail= into =~/.cache/mirror-mail/broad= so unlabeled archived messages are included without adding duplicate results to mu4e. After each sync, =mirror-mail purdue broad broad-spam= uploads complete messages from every synchronized Purdue and Broad folder into the searchable =INBOX.Purdue= and =INBOX.Broad-Archive= archives on quasimorphic, while also copying Gmail spam into MXroute's native =Junk= folder. Copies are deduplicated by Message-ID and capped at 500 new messages per destination per run. Before enabling bidirectional archive sync for the first time, run =mirror-mail --record-existing purdue broad broad-spam= to seed import receipts from existing remote and locally retained copies, including Trash and Junk. Receipts live in =~/.local/state/mirror-mail/imports.sqlite3=; retain/back up this file so moving or deleting an imported message does not cause the next importer run to restore it. An uninitialized destination fails closed until its receipts are seeded. Because the complete RFC 822 messages are stored on MXroute, their subjects and ordinary message bodies are searchable there. The six archives (=alanmunoz=, =Broad-Archive=, =cachora=, =Old-Gmail=, =Old-Gmail-Ska=, and =Purdue=) live directly under =INBOX=. All MXroute folders, including the six Inbox children, synchronize messages, moves, flags and deletions bidirectionally (=Sync All=, =Expunge Both=). A final archive/Junk sync makes new copies visible in mu4e. Use the =Inbox + archives= bookmark (=b i=) to search Inbox and its archive children together. Junk lives outside Inbox, so it is excluded from this search. Use the server's native =Junk= folder for all spam instead of maintaining a separate Spam folder.
 
 The =mu= backend and =mu4e= Emacs package come from nixpkgs's matching =mu= outputs. Installing both =mu= and =mu.mu4e= keeps their versions aligned and provides the generated =mu4e-config.el=, so no Straight checkout or hand-written version expectation is needed.
 
@@ -3975,7 +3975,11 @@ The =mu= backend and =mu4e= Emacs package come from nixpkgs's matching =mu= outp
     :config
     (setq mu4e-maildir (expand-file-name "~/.mail"))
     (setq mu4e-get-mail-command
-          "mbsync -a && ~/.local/bin/mirror-purdue-mail && mbsync quasimorphic")
+          (concat
+           "mbsync -a && { "
+           "~/.local/bin/mirror-mail purdue broad broad-spam; mirror_status=$?; "
+           "mbsync quasimorphic-archives quasimorphic:Junk; archive_status=$?; "
+           "[ $mirror_status -eq 0 ] && [ $archive_status -eq 0 ]; }"))
     (setq mu4e-update-interval 300)
 
     (setq mu4e-change-filenames-when-moving t)
@@ -4011,8 +4015,10 @@ The =mu= backend and =mu4e= Emacs package come from nixpkgs's matching =mu= outp
                           (when msg
                             (let ((maildir (mu4e-message-field msg :maildir)))
                               (and (string-prefix-p "/quasimorphic" maildir)
-                                   (not (string-prefix-p
-                                         "/quasimorphic/Inbox/Purdue" maildir))))))
+                                   (not (or (string-prefix-p
+                                             "/quasimorphic/Inbox/Purdue" maildir)
+                                            (string-prefix-p
+                                             "/quasimorphic/Inbox/Broad-Archive" maildir)))))))
             :vars '((user-mail-address  . "alan@quasimorphic.com")
                     (user-full-name     . "Alán F. Muñoz")
                     (mu4e-sent-folder   . "/quasimorphic/Sent")
@@ -4023,7 +4029,10 @@ The =mu= backend and =mu4e= Emacs package come from nixpkgs's matching =mu= outp
             :name "broad"
             :match-func (lambda (msg)
                           (when msg
-                            (string-prefix-p "/broad" (mu4e-message-field msg :maildir))))
+                            (let ((maildir (mu4e-message-field msg :maildir)))
+                              (or (string-prefix-p "/broad" maildir)
+                                  (string-prefix-p
+                                   "/quasimorphic/Inbox/Broad-Archive" maildir)))))
             :vars '((user-mail-address  . "amunozgo@broadinstitute.org")
                     (user-full-name     . "Alán F. Muñoz")
                     (mu4e-sent-folder   . "/broad/[Gmail]/Sent Mail")
@@ -4054,16 +4063,19 @@ The =mu= backend and =mu4e= Emacs package come from nixpkgs's matching =mu= outp
           '((:maildir "/quasimorphic/Inbox"  :key ?i)
             (:maildir "/quasimorphic/Sent"   :key ?s)
             (:maildir "/quasimorphic/Drafts" :key ?d)
+            (:maildir "/quasimorphic/Junk" :key ?j)
             (:maildir "/broad/Inbox"         :key ?b)
             (:maildir "/broad/[Gmail]/Sent Mail" :key ?B)
             (:maildir "/broad/[Gmail]/Drafts" :key ?D)
             (:maildir "/purdue/Inbox"        :key ?p)
             (:maildir "/purdue/Sent Items"   :key ?P)
-            (:maildir "/quasimorphic/Inbox/Purdue" :key ?a)))
+            (:maildir "/quasimorphic/Inbox/Purdue" :key ?a)
+            (:maildir "/quasimorphic/Inbox/Broad-Archive" :key ?g)))
 
-    ;; Bookmarks
+    ;; Folder-only searches are not recursive; the wildcard includes archives.
     (setq mu4e-bookmarks
-          '((:name "Unread" :query "flag:unread AND (maildir:/quasimorphic/Inbox OR maildir:/broad/Inbox OR maildir:/purdue/Inbox)" :key ?u)
+          '((:name "Inbox + archives" :query "maildir:/quasimorphic/Inbox*" :key ?i)
+            (:name "Unread" :query "flag:unread AND (maildir:/quasimorphic/Inbox OR maildir:/broad/Inbox OR maildir:/purdue/Inbox)" :key ?u)
             (:name "Today"  :query "date:today..now  AND (maildir:/quasimorphic/Inbox OR maildir:/broad/Inbox OR maildir:/purdue/Inbox)" :key ?t)
             (:name "Week"   :query "date:7d..now  AND (maildir:/quasimorphic/Inbox OR maildir:/broad/Inbox OR maildir:/purdue/Inbox)" :key ?w)
             (:name "Drafts" :query "maildir:/quasimorphic/Drafts OR maildir:/broad/[Gmail]/Drafts OR maildir:/purdue/Drafts" :key ?d)))

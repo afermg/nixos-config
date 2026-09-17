@@ -25,8 +25,8 @@
   ".mbsyncrc" = {
     text = builtins.readFile ../shared/config/email/mbsyncrc;
   };
-  ".local/bin/mirror-purdue-mail" = {
-    source = ./config/email/mirror-purdue.py;
+  ".local/bin/mirror-mail" = {
+    source = ./config/email/mirror-mail.py;
     executable = true;
   };
 }
