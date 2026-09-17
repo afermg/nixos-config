@@ -4003,6 +4003,23 @@ The =mu= backend and =mu4e= Emacs package come from nixpkgs's matching =mu= outp
     (setq message-sendmail-extra-arguments '("--read-envelope-from"))
     (setq message-send-mail-function 'message-send-mail-with-sendmail)
 
+    ;; A malformed mail header needs a leading space on each continuation
+    ;; line. Message mode can repair this safely, but normally interrupts
+    ;; every send with "Fix continuation lines?". Apply that repair
+    ;; automatically while leaving all other send confirmations intact.
+    (defun afm/message-auto-fix-continuation-headers (orig-fn &rest args)
+      (let ((original-y-or-n-p (symbol-function 'y-or-n-p)))
+        (cl-letf (((symbol-function 'y-or-n-p)
+                   (lambda (prompt)
+                     (if (equal prompt "Fix continuation lines? ")
+                         t
+                       (funcall original-y-or-n-p prompt)))))
+          (apply orig-fn args))))
+    (advice-remove 'message--check-continuation-headers
+                   #'afm/message-auto-fix-continuation-headers)
+    (advice-add 'message--check-continuation-headers :around
+                #'afm/message-auto-fix-continuation-headers)
+
     ;; Save sent messages to the Sent folder
     (setq mu4e-sent-messages-behavior 'sent)
 
@@ -4279,9 +4296,10 @@ counting other people's work/personal addresses as evidence."
 
     (defun afm/mu4e-verify-from-before-send ()
       "Abort message-send when From doesn't match thread history.
-Hard rule: any @broadinstitute.org recipient forces broad From.
+Hard rule: @broadinstitute.org recipients require a Broad or Purdue From.
+Purdue is Alán's current professional address and is valid for Broad contacts.
 Soft rule: historical mismatch on the first non-self recipient prompts
-for confirmation."
+for confirmation, except when sending from Purdue to a Broad contact."
       (when (derived-mode-p 'message-mode)
         (let* ((from-raw (or (message-fetch-field "From") ""))
                (from (downcase (or (cadr (mail-extract-address-components from-raw))
@@ -4295,19 +4313,25 @@ for confirmation."
                                          parsed)))
                (my (mapcar #'downcase afm/mu4e-my-addresses))
                (others (cl-remove-if (lambda (a) (member a my)) recipients)))
-          ;; Hard rule
+          ;; Hard rule: never use the personal address for Broad recipients.
           (when (and others
                      (cl-some (lambda (a) (string-suffix-p "@broadinstitute.org" a))
                               others)
-                     (not (string= from "amunozgo@broadinstitute.org")))
+                     (not (member from '("amunozgo@broadinstitute.org"
+                                         "amunozgo@purdue.edu"))))
             (user-error
-             "ABORT: recipients include @broadinstitute.org but From is %s.  M-x mu4e-context-switch → 'broad', then re-send"
+             "ABORT: recipients include @broadinstitute.org but From is %s. Use the Broad or Purdue context, then re-send"
              from))
           ;; Soft rule (first non-self recipient)
           (when others
             (let* ((target (car others))
-                   (canonical (afm/mu4e--canonical-from-for target)))
-              (when (and canonical (not (string= from canonical)))
+                   (canonical (afm/mu4e--canonical-from-for target))
+                   (purdue-to-broad
+                    (and (string= from "amunozgo@purdue.edu")
+                         (string-suffix-p "@broadinstitute.org" target))))
+              (when (and canonical
+                         (not (string= from canonical))
+                         (not purdue-to-broad))
                 (unless (y-or-n-p
                          (format
                           "Thread history with %s used %s, but you're sending from %s.  Send anyway? "
