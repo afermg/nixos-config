@@ -3962,7 +3962,7 @@ Mail client using mu (maildir-utils) as the backend, mbsync (isync) for IMAP syn
 
 System dependencies (in packages.nix): =mu=, =mu.mu4e=, =isync=, =msmtp=, and =oama=.
 
-Run =mbsync -a= to do the initial sync, then =mu init --maildir=~/.mail --my-address=alan@quasimorphic.com --my-address=amunozgo@broadinstitute.org --my-address=amunozgo@purdue.edu= and =mu index= to build the database. A pull-only channel downloads Gmail's canonical =[Gmail]/All Mail= into =~/.cache/mirror-mail/broad= so unlabeled archived messages are included without adding duplicate results to mu4e. After each sync, =mirror-mail purdue broad broad-spam= uploads complete messages from every synchronized Purdue and Broad folder into the searchable =INBOX.Purdue= and =INBOX.Broad-Archive= archives on quasimorphic, while also copying Gmail spam into MXroute's native =Junk= folder. Copies are deduplicated by Message-ID and capped at 500 new messages per destination per run. Before enabling bidirectional archive sync for the first time, run =mirror-mail --record-existing purdue broad broad-spam= to seed import receipts from existing remote and locally retained copies, including Trash and Junk. Receipts live in =~/.local/state/mirror-mail/imports.sqlite3=; retain/back up this file so moving or deleting an imported message does not cause the next importer run to restore it. An uninitialized destination fails closed until its receipts are seeded. Because the complete RFC 822 messages are stored on MXroute, their subjects and ordinary message bodies are searchable there. The six archives (=alanmunoz=, =Broad-Archive=, =cachora=, =Old-Gmail=, =Old-Gmail-Ska=, and =Purdue=) live directly under =INBOX=. All MXroute folders, including the six Inbox children, synchronize messages, moves, flags and deletions bidirectionally (=Sync All=, =Expunge Both=). A final archive/Junk sync makes new copies visible in mu4e. Use the =Inbox + archives= bookmark (=b i=) to search Inbox and its archive children together. Junk lives outside Inbox, so it is excluded from this search. Use the server's native =Junk= folder for all spam instead of maintaining a separate Spam folder.
+Run =mbsync -a= to do the initial sync, then =mu init --maildir=~/.mail --my-address=alan@quasimorphic.com --my-address=amunozgo@broadinstitute.org --my-address=amunozgo@purdue.edu= and =mu index= to build the database. A pull-only channel downloads Gmail's canonical =[Gmail]/All Mail= into =~/.cache/mirror-mail/broad= so unlabeled archived messages are included without adding duplicate results to mu4e. After each sync, =mirror-mail purdue broad broad-spam= uploads complete messages from every synchronized Purdue and Broad folder into the searchable =INBOX.Purdue= and =INBOX.Broad-Archive= archives on quasimorphic, while also copying Gmail spam into MXroute's native =Junk= folder. Copies are deduplicated by Message-ID and capped at 500 new messages per destination per run. Before enabling bidirectional archive sync for the first time, run =mirror-mail --record-existing purdue broad broad-spam= to seed import receipts from existing remote and locally retained copies, including Trash and Junk. Receipts live in =~/.local/state/mirror-mail/imports.sqlite3=; retain/back up this file so moving or deleting an imported message does not cause the next importer run to restore it. An uninitialized destination fails closed until its receipts are seeded. Because the complete RFC 822 messages are stored on MXroute, their subjects and ordinary message bodies are searchable there. The six archives (=alanmunoz=, =Broad-Archive=, =cachora=, =Old-Gmail=, =Old-Gmail-Ska=, and =Purdue=) live directly under =INBOX=. All MXroute folders, including the six Inbox children, synchronize messages, moves, flags and deletions bidirectionally (=Sync All=, =Expunge Both=). In mu4e, execute pending marks, then sync (=U=): trashing an MXroute copy puts it in MXroute's =Trash=, moving it to =Junk= does the same remotely, and permanent deletion removes the remote copy. Normal =d= trashing does not set the Maildir deletion flag, so syncing will not immediately expunge it. Permanent deletion (=D=, Delete key, or bulk delete marks) is allowed only inside the message's own Trash folder and requires an explicit confirmation at execution, even with a prefix argument. Mixed batches are checked before any actions run; cancelling preserves the marks. This does not delete a separate original copy from Broad or Purdue. A final archive/Junk sync makes new copies visible in mu4e. Use the =Inbox + archives= bookmark (=b i=) to search Inbox and its archive children together. Junk lives outside Inbox, so it is excluded from this search. Use the server's native =Junk= folder for all spam instead of maintaining a separate Spam folder.
 
 The =mu= backend and =mu4e= Emacs package come from nixpkgs's matching =mu= outputs. Installing both =mu= and =mu.mu4e= keeps their versions aligned and provides the generated =mu4e-config.el=, so no Straight checkout or hand-written version expectation is needed.
 
@@ -4006,6 +4006,94 @@ The =mu= backend and =mu4e= Emacs package come from nixpkgs's matching =mu= outp
     ;; Save sent messages to the Sent folder
     (setq mu4e-sent-messages-behavior 'sent)
 
+    ;; Trash follows the message's storage account, not its reply From context.
+    ;; In particular, a Broad/Purdue archive copy lives on MXroute and must not
+    ;; be moved into the original account's Trash when deleted from the archive.
+    (defun afm/mu4e-trash-folder (msg)
+      "Choose Trash for MSG's actual maildir, or the current compose context."
+      (let ((account
+             (if msg
+                 (car (split-string (mu4e-message-field msg :maildir) "/" t))
+               (when (mu4e-context-current)
+                 (mu4e-context-name (mu4e-context-current))))))
+        (pcase account
+          ("quasimorphic" "/quasimorphic/Trash")
+          ("broad" "/broad/[Gmail]/Trash")
+          ("purdue" "/purdue/Deleted Items")
+          (_ (user-error "Cannot determine Trash folder for %S" account)))))
+
+    ;; Keep ordinary trashing recoverable; mbsync Expunge Both treats +T as
+    ;; immediate deletion, not as "this message lives in the Trash folder".
+    (defvar afm/mu4e--confirmed-delete-docids nil
+      "Dynamically scoped IDs approved for the current permanent-delete batch.")
+
+    (defun afm/mu4e-require-trash (msg &optional docid)
+      "Reject permanent deletion unless MSG is in its account's exact Trash.
+If DOCID is given, also reject a stale/mismatched message lookup."
+      (unless (and msg
+                   (equal (mu4e-message-field msg :maildir)
+                          (afm/mu4e-trash-folder msg)))
+        (user-error "Permanent deletion is only allowed in Trash; use d first"))
+      (when (and docid (not (equal docid (mu4e-message-field msg :docid))))
+        (user-error "Message changed since marking; refresh before deleting")))
+
+    (defun afm/mu4e-delete-trash-target (target msg)
+      "Validate MSG when a delete mark is set, including bulk/deferred marks."
+      (afm/mu4e-require-trash msg)
+      target)
+
+    (defun afm/mu4e-delete-from-trash (docid msg _target)
+      "Delete DOCID only from Trash and only after explicit confirmation."
+      (afm/mu4e-require-trash msg docid)
+      (unless (or (memq docid afm/mu4e--confirmed-delete-docids)
+                  (yes-or-no-p
+                   "Permanently delete this Trash message, including on next server sync? "))
+        (user-error "Permanent deletion cancelled; marks preserved"))
+      (mu4e--server-remove docid))
+
+    (defun afm/mu4e-confirm-trash-deletions (original &rest args)
+      "Preflight all delete marks and confirm before ORIGINAL runs any actions.
+A prefix/no-confirmation argument never bypasses permanent-delete confirmation."
+      (mu4e--mark-in-context
+       (when (hash-table-p mu4e--mark-map)
+         (mu4e-mark-resolve-deferred-marks))
+       (let (delete-docids)
+         (when (hash-table-p mu4e--mark-map)
+           (maphash
+            (lambda (docid mark)
+              (when (eq (car mark) 'delete)
+                (save-excursion
+                  (unless (mu4e~headers-goto-docid docid)
+                    (user-error "Marked message is missing; refresh before deleting"))
+                  (afm/mu4e-require-trash (mu4e-message-at-point) docid))
+                (push docid delete-docids)))
+            mu4e--mark-map))
+         (if (null delete-docids)
+             (apply original args)
+           (unless (yes-or-no-p
+                    (format
+                     "Execute %d marked actions, permanently deleting %d Trash message(s)? This is irreversible and syncs to the server. "
+                     (hash-table-count mu4e--mark-map) (length delete-docids)))
+             (user-error "Permanent deletion cancelled; marks preserved"))
+           (let ((afm/mu4e--confirmed-delete-docids delete-docids))
+             ;; This explicit prompt covered the entire batch; do not ask the
+             ;; weaker generic "execute marks?" question a second time.
+             (funcall original t))))))
+
+    (defun afm/mu4e-install-safe-delete ()
+      "Install Trash-only permanent deletion without stacking advice on reload."
+      (setq mu4e-trash-without-flag t
+            mu4e-headers-leave-behavior 'ask
+            mu4e-marks (copy-tree mu4e-marks))
+      (setf (plist-get (alist-get 'delete mu4e-marks) :dyn-target)
+            #'afm/mu4e-delete-trash-target
+            (plist-get (alist-get 'delete mu4e-marks) :action)
+            #'afm/mu4e-delete-from-trash)
+      (advice-remove 'mu4e-mark-execute-all #'afm/mu4e-confirm-trash-deletions)
+      (advice-add 'mu4e-mark-execute-all :around #'afm/mu4e-confirm-trash-deletions))
+
+    (afm/mu4e-install-safe-delete)
+
     ;; Multiple account contexts
     (setq mu4e-contexts
           (list
@@ -4023,7 +4111,7 @@ The =mu= backend and =mu4e= Emacs package come from nixpkgs's matching =mu= outp
                     (user-full-name     . "Alán F. Muñoz")
                     (mu4e-sent-folder   . "/quasimorphic/Sent")
                     (mu4e-drafts-folder . "/quasimorphic/Drafts")
-                    (mu4e-trash-folder  . "/quasimorphic/Trash") ;
+                    (mu4e-trash-folder  . afm/mu4e-trash-folder)
                     (mu4e-refile-folder . "/quasimorphic/Inbox")))
            (make-mu4e-context
             :name "broad"
@@ -4037,7 +4125,7 @@ The =mu= backend and =mu4e= Emacs package come from nixpkgs's matching =mu= outp
                     (user-full-name     . "Alán F. Muñoz")
                     (mu4e-sent-folder   . "/broad/[Gmail]/Sent Mail")
                     (mu4e-drafts-folder . "/broad/[Gmail]/Drafts")
-                    (mu4e-trash-folder  . "/broad/[Gmail]/Trash")
+                    (mu4e-trash-folder  . afm/mu4e-trash-folder)
                     (mu4e-refile-folder . "/broad/Inbox")))
            (make-mu4e-context
             :name "purdue"
@@ -4050,7 +4138,7 @@ The =mu= backend and =mu4e= Emacs package come from nixpkgs's matching =mu= outp
                     (user-full-name     . "Alán F. Muñoz")
                     (mu4e-sent-folder   . "/purdue/Sent Items")
                     (mu4e-drafts-folder . "/purdue/Drafts")
-                    (mu4e-trash-folder  . "/purdue/Deleted Items")
+                    (mu4e-trash-folder  . afm/mu4e-trash-folder)
                     (mu4e-refile-folder . "/purdue/Inbox")))))
     (setq mu4e-context-policy 'pick-first)
     ;; nil makes compose evaluate per-message match-funcs against the parent
