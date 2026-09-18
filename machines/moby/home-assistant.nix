@@ -5,7 +5,10 @@
 
     # Replace the module's broad defaults. Onboarding sets up Met.no weather;
     # add other integration names here as you start using them in the UI.
-    extraComponents = [ "met" ];
+    extraComponents = [
+      "met"
+      "roborock" # Configure the Roborock app account in the Home Assistant UI.
+    ];
 
     config = {
       # Deliberately omit default_config: no automatic network discovery,
