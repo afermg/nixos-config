@@ -135,12 +135,14 @@ in
     enable = true;
     package = personalAtuin;
     enableFishIntegration = true;
+    enableZshIntegration = true;
     daemon.enable = atuin_daemon_p;
     flags = [ "--disable-up-arrow" ];
     settings = {
       auto_sync = true;
       sync_frequency = "5m";
       sync_address = "https://api.atuin.sh";
+      filter_mode = "global";
       search_mode = "prefix";
     };
   };
@@ -188,42 +190,19 @@ in
       #   src = pkgs.fishPlugins.transient-fish.src;
       # }
     ];
-    # Atuin+fzf history from https://github.com/atuinsh/atuin/issues/68
     interactiveShellInit = ''
       set --universal pure_enable_nixdevshell true
-
-      # Ation + fzf
-      function fzf_history
-          set -l line (commandline)
-
-          # tac reverses order initially, tiebreak sorts(?), -n2..,.. ignores first two fields, +m means no "--multi"
-          set -l result (atuin search --cmd-only | fzf --tac "-n2..,.." --tiebreak=index "+m" --query="$line")
-
-          set -l key $result[1]
-          set -l selected $result[2]
-
-          if test "$key" = enter
-              commandline --replace $selected
-              commandline -f repaint
-              commandline -f execute
-              return
-          end
-
-          if test -n "$selected"
-              commandline -r -- $selected
-          end
-
-          commandline -f repaint
-      end
       set -gx FZF_DEFAULT_OPTS "--bind=alt-k:up,alt-j:down --expect=tab,enter --layout=reverse 
         --height=17 --delimiter='\t' --with-nth=1 
           --preview-window='border-rounded' --prompt='  ' --marker=' ' --pointer=' ' 
           --separator='─' --scrollbar='┃' --layout='reverse' 
         "
-      set -x ATUIN_NOBIND true
-      bind \cR fzf_history
     '';
   };
+
+  # Generate ~/.zshrc on Darwin, where zsh is the account login shell. This
+  # also activates programs.atuin.enableZshIntegration.
+  programs.zsh.enable = pkgs.stdenv.isDarwin;
 
   # MXroute and Gmail use port 465 with implicit TLS. Purdue's Microsoft 365
   # account uses its required submission endpoint on port 587 with STARTTLS.
