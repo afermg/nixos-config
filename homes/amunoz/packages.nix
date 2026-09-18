@@ -48,7 +48,6 @@ in
 
   ## AI
   opencode
-  gemini-cli
   claude-code
   codex
   agenix

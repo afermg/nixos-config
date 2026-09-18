@@ -23,8 +23,6 @@ in
 
   uv
   conda
-
-  pzip
 ]
 # Packages shared across users and devices
 ++ shared-packages
