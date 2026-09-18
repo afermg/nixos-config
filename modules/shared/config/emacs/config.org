@@ -4439,6 +4439,12 @@ Cutting edge LLM models.
     (afm/gptel--pi-openai-auth)
     (message "Reloaded gptel authentication from Pi"))
 
+  ;; Do not rely on the installed package's older model list: gptel silently
+  ;; substituted its first model (gpt-5.2) when Astra was not registered.
+  (defconst afm/gptel-openai-models
+    '(gpt-6-astra gpt-5.6-sol gpt-5.4-mini)
+    "Models explicitly offered by the shared ChatGPT subscription backend.")
+
   (use-package gptel
     :straight (:host github :repo "karthink/gptel"
                      :branch "master")
@@ -4448,7 +4454,8 @@ Cutting edge LLM models.
           gptel-backend
           (gptel-make-openai-oauth
               "OpenAI-sub"
-            :header #'afm/gptel--pi-openai-header)))
+            :header #'afm/gptel--pi-openai-header
+            :models afm/gptel-openai-models)))
 #+end_src
 
 ****  gptel-magit
@@ -4463,46 +4470,86 @@ longer writes its own token file.  After changing Pi accounts, run
 No independent gptel login, OpenAI API key, or Agenix secret is required for
 this Emacs integration.
 
-Simple but working gptel+magit integration. Replaced gptcommit-mode
+Magit uses the shared backend with an explicitly registered model. Unknown
+OAuth models fail before a request is sent, instead of silently falling back
+to a stale model. The adapter collects streaming output into one complete
+commit message and reports the server's error text on failure; failed, aborted,
+or empty responses never insert partial commit messages. Authentication,
+network availability, and future provider API/model changes can still fail,
+but those failures are reported rather than hidden behind an HTTP code.
 
 #+begin_src elisp
   (use-package gptel-magit
     :ensure t
     :hook (magit-mode . gptel-magit-install)
     :config
-    ;; From https://github.com/ragnard/gptel-magit/issues/8
     (setopt gptel-include-reasoning nil)
 
-    ;; ChatGPT's subscription endpoint requires streaming, while
-    ;; gptel-magit expects one complete callback. Accumulate streamed
-    ;; chunks and invoke its callback once when the response completes.
-    (define-advice gptel-magit--request
-        (:around (orig-fn &rest args) afm/openai-oauth-stream)
+    (defun afm/gptel-magit--error-text (info &optional fallback)
+      "Describe an error without dumping INFO's request data or credentials."
+      (let* ((error-data (plist-get info :error))
+             (detail (cond ((stringp error-data) error-data)
+                           ((listp error-data)
+                            (or (plist-get error-data :message)
+                                (plist-get error-data :detail)))))
+             (text (format "gptel-magit request failed (%s): %s"
+                           (or (plist-get info :status) "no HTTP status")
+                           (if (stringp detail) detail
+                             (or fallback "No error details returned")))))
+        (setq text (replace-regexp-in-string
+                    "Bearer [A-Za-z0-9._~+/=-]+" "Bearer [REDACTED]" text))
+        (replace-regexp-in-string
+         "\\b\\(?:eyJ[A-Za-z0-9_.-]+\\|sk-[A-Za-z0-9_-]+\\)"
+         "[REDACTED]" text)))
+
+    (defun afm/gptel-magit--collect-stream (callback)
+      "Return a streaming callback that delivers one complete result to CALLBACK."
+      (let (chunks finished)
+        (lambda (response info)
+          (unless finished
+            (cond
+             ((stringp response) (push response chunks))
+             ((eq response t)
+              (setq finished t)
+              (let ((text (apply #'concat (nreverse chunks))))
+                (if (or (plist-get info :error) (string-empty-p (string-trim text)))
+                    (message "%s" (afm/gptel-magit--error-text info "Empty response"))
+                  (funcall callback text info))))
+             ((or (null response) (eq response 'abort))
+              (setq finished t)
+              (message "%s" (afm/gptel-magit--error-text
+                             info (if (eq response 'abort)
+                                      "Request cancelled" "No response")))))))))
+
+    (defun afm/gptel-magit--request (original &rest args)
+      "Adapt OAuth requests without silent model fallback or partial callbacks."
       (let* ((backend (or gptel-magit-backend gptel-backend))
+             (model (or gptel-magit-model gptel-model))
+             (model (if (stringp model) (intern model) model))
              (options (copy-sequence (cdr args)))
              (callback (plist-get options :callback)))
-        (if (or (not (gptel-openai-oauth-p backend))
-                (not (functionp callback)))
-            (apply orig-fn args)
-          (let ((chunks "")
-                (finished nil))
-            (setq options
-                  (plist-put
-                   options :callback
-                   (lambda (response info)
-                     (cond
-                      ((stringp response)
-                       (setq chunks (concat chunks response)))
-                      ((eq response t)
-                       (unless finished
-                         (setq finished t)
-                         (funcall callback chunks info)))
-                      ((or (null response) (eq response 'abort))
-                       (setq finished t)
-                       (message "gptel-magit request failed: %s"
-                                (plist-get info :status)))))))
+        (if (not (gptel-openai-oauth-p backend))
+            (apply original args)
+          ;; gptel otherwise silently picks the first model in an old backend
+          ;; list.  That used to turn Astra into the now-rejected gpt-5.2.
+          (unless (memq model (gptel-backend-models backend))
+            (user-error
+             "gptel-magit model %s is not registered in %s; update the backend models or choose a registered model (no request sent)"
+             model (gptel-backend-name backend)))
+          (if (not (functionp callback))
+              (apply original args)
+            (setq options (plist-put options :callback
+                                     (afm/gptel-magit--collect-stream callback)))
             (setq options (plist-put options :stream t))
-            (apply orig-fn (cons (car args) options)))))))
+            (apply original (cons (car args) options))))))
+
+    (defun afm/gptel-magit-install-oauth-compat ()
+      "Install the OAuth adapter once, replacing the older stream-only advice."
+      (advice-remove 'gptel-magit--request 'afm/openai-oauth-stream)
+      (advice-remove 'gptel-magit--request #'afm/gptel-magit--request)
+      (advice-add 'gptel-magit--request :around #'afm/gptel-magit--request))
+
+    (afm/gptel-magit-install-oauth-compat))
 #+end_src
 
 
