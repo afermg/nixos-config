@@ -2979,6 +2979,18 @@ Returns the Ghostel buffer."
     (setq ghostel-kill-buffer-on-exit t)
     (setq ghostel-module-auto-install 'download)
 
+    ;; Keep mu4e links from terminal output inside Emacs.
+    ;; The stock dispatcher only handles file/fileref and scheme:// URLs.
+    (defun afm/ghostel-open-mu4e-link (original url)
+      "Open a mu4e URL in Emacs; delegate other links to ORIGINAL."
+      (if (and (stringp url) (string-prefix-p "mu4e:" url))
+          (progn
+            (require 'mu4e-org)
+            (mu4e-org-open (substring url (length "mu4e:"))))
+        (funcall original url)))
+    (advice-remove 'ghostel--open-link #'afm/ghostel-open-mu4e-link)
+    (advice-add 'ghostel--open-link :around #'afm/ghostel-open-mu4e-link)
+
     ;; Send a literal C0 byte rather than consulting the terminal encoder.
     ;; Pi leaves Kitty keyboard mode active while its external editor runs;
     ;; encoding C-x there produces a visible CSI-u string that nano cannot
