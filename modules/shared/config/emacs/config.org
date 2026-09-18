@@ -3986,12 +3986,14 @@ The =mu= backend and =mu4e= Emacs package come from nixpkgs's matching =mu= outp
     :bind ("C-c m" . mu4e)
     :config
     (setq mu4e-maildir (expand-file-name "~/.mail"))
+    ;; mu4e uses shell-file-name (Fish here); keep POSIX syntax inside Bash.
     (setq mu4e-get-mail-command
           (concat
+           "bash -c '"
            "mbsync -a && { "
            "~/.local/bin/mirror-mail purdue broad broad-spam; mirror_status=$?; "
            "mbsync quasimorphic-archives quasimorphic:Junk; archive_status=$?; "
-           "[ $mirror_status -eq 0 ] && [ $archive_status -eq 0 ]; }"))
+           "[ $mirror_status -eq 0 ] && [ $archive_status -eq 0 ]; }'"))
     (setq mu4e-update-interval 300)
 
     (setq mu4e-change-filenames-when-moving t)
