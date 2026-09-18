@@ -107,6 +107,21 @@
       authKeyFile = config.age.secrets.tailscale.path;
     };
 
+    # Keep password recovery for the owner's existing account only.  The
+    # global `true` keeps PAM password validation available; the Match block
+    # disables SSH password authentication for every other user.
+    openssh = {
+      settings = {
+        PasswordAuthentication = true;
+        KbdInteractiveAuthentication = false;
+      };
+      extraConfig = ''
+        Match User *,!amunoz
+          PasswordAuthentication no
+        Match all
+      '';
+    };
+
   };
 
   nixpkgs = {
