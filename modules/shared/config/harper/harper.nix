@@ -2,7 +2,7 @@
 let
   # Harper follows the platform-native config directory by default.
   dictionaryPath =
-    if pkgs.stdenv.isDarwin then
+    if pkgs.stdenv.hostPlatform.isDarwin then
       "Library/Application Support/harper-ls/dictionary.txt"
     else
       ".config/harper-ls/dictionary.txt";

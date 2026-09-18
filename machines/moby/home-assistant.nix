@@ -2,7 +2,6 @@
 {
   services.home-assistant = {
     enable = true;
-    openFirewall = false;
 
     # Replace the module's broad defaults. Onboarding sets up Met.no weather;
     # add other integration names here as you start using them in the UI.
@@ -10,11 +9,12 @@
 
     config = {
       # Deliberately omit default_config: no automatic network discovery,
-      # Bluetooth, cloud integration, or history database to start with.
+      # Bluetooth, Home Assistant Cloud, or history database to start with.
       frontend = { };
 
-      # Moby's firewall is disabled, so bind explicitly to loopback.
-      # Use an SSH tunnel for access from another computer.
+      # Keep this for the one-time HTTP settings migration in HA 2026.9.
+      # Moby's firewall is disabled, so preserve the loopback-only listener.
+      # After migration, HTTP settings are managed in the UI; see docs/home-assistant.md.
       http = {
         server_host = "127.0.0.1";
         server_port = 8123;

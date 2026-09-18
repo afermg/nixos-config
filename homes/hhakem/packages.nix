@@ -25,5 +25,5 @@ in
 # Packages shared across users and devices
 ++ shared-packages
 # Linux-only packages
-++ pkgs.lib.optionals pkgs.stdenv.isLinux [
+++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
 ]

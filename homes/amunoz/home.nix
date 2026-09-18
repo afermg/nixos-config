@@ -7,9 +7,13 @@
   ...
 }:
 let
-  user = if pkgs.stdenv.isLinux then "amunoz" else (if username != null then username else "alan");
-  home_parent = if pkgs.stdenv.isLinux then "home" else "Users";
-  atuin_daemon_p = if pkgs.stdenv.isLinux then true else false;
+  user =
+    if pkgs.stdenv.hostPlatform.isLinux then
+      "amunoz"
+    else
+      (if username != null then username else "alan");
+  home_parent = if pkgs.stdenv.hostPlatform.isLinux then "home" else "Users";
+  atuin_daemon_p = if pkgs.stdenv.hostPlatform.isLinux then true else false;
   personalPkgs = amunozInputs.nixpkgs.legacyPackages.${pkgs.stdenv.hostPlatform.system};
   personalAtuin = personalPkgs.atuin;
   personalPiCodingAgent = personalPkgs.pi-coding-agent;
@@ -202,7 +206,7 @@ in
 
   # Generate ~/.zshrc on Darwin, where zsh is the account login shell. This
   # also activates programs.atuin.enableZshIntegration.
-  programs.zsh.enable = pkgs.stdenv.isDarwin;
+  programs.zsh.enable = pkgs.stdenv.hostPlatform.isDarwin;
 
   # MXroute and Gmail use port 465 with implicit TLS. Purdue's Microsoft 365
   # account uses its required submission endpoint on port 587 with STARTTLS.

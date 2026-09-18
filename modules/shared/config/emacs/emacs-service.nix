@@ -16,7 +16,7 @@ in
     startWithUserSession = true;
   };
 
-  systemd.user.services.emacs = lib.mkIf pkgs.stdenv.isLinux {
+  systemd.user.services.emacs = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
     Service = {
       Restart = lib.mkForce "always";
       RestartSec = "5s";

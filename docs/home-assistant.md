@@ -3,7 +3,7 @@
 The NixOS module is [`machines/moby/home-assistant.nix`](../machines/moby/home-assistant.nix).
 It runs Home Assistant Core as the `hass` system user, with the web UI and
 Home Assistant's built-in helpers. It deliberately omits `default_config`:
-no automatic network discovery, Bluetooth, cloud integration, or history
+no automatic network discovery, Bluetooth, Home Assistant Cloud, or history
 recorder. Only the Met.no weather dependency used by onboarding is explicitly
 added; you can remove that integration in the UI if unwanted.
 
@@ -32,8 +32,34 @@ ssh -N -L 127.0.0.1:8123:127.0.0.1:8123 amunoz@moby.tail5e510f.ts.net
 ```
 
 Then open the same URL on that computer while the tunnel remains running.
-There is no LAN or direct Tailscale listener. Moby's firewall is currently disabled,
-so `openFirewall = false` alone would **not** protect a listener on `0.0.0.0`.
+The intended listener is loopback-only, not LAN or direct Tailscale. Moby's
+firewall is currently disabled, so do not change the HTTP listen address to
+`0.0.0.0` or leave the listen-address list empty.
+
+## HTTP settings migration (Home Assistant 2026.8+)
+
+NixOS removed `services.home-assistant.openFirewall`; even setting it to `false`
+now fails evaluation. Home Assistant moved HTTP settings from YAML into its
+runtime storage/UI. The existing `config.http` block is kept temporarily so
+upgrading from 2026.7 imports `127.0.0.1:8123` instead of losing that setting.
+
+After the first upgraded start:
+
+1. Open **Settings → System → Network → HTTP server**. Check that the listen
+   addresses contain only `127.0.0.1` and the port is `8123`.
+2. If asked to confirm the imported settings, confirm within **5 minutes**;
+   otherwise Home Assistant reverts to its previous stored settings.
+3. Verify the listener with `ss -ltn 'sport = :8123'` on Moby.
+4. Only after confirming the migration, remove the `http` block from
+   `machines/moby/home-assistant.nix` and rebuild. This clears the HTTP YAML
+   deprecation/ignored-configuration repair notice.
+
+After migration, edits to `config.http` no longer control the listener. Preserve
+`/var/lib/hass/.storage` in backups; future HTTP changes belong in the UI. On a
+fresh installation the initial migration may require prompt confirmation too.
+If migration/binding fails, Home Assistant can fall back to an all-interface
+listener, so do not assume that the YAML alone guarantees network isolation.
+See the [HTTP integration documentation](https://www.home-assistant.io/integrations/http/).
 
 ## Customize incrementally
 
