@@ -1,0 +1,67 @@
+# Minimal Home Assistant on Moby
+
+The NixOS module is [`machines/moby/home-assistant.nix`](../machines/moby/home-assistant.nix).
+It runs Home Assistant Core as the `hass` system user, with the web UI and
+Home Assistant's built-in helpers. It deliberately omits `default_config`:
+no automatic network discovery, Bluetooth, cloud integration, or history
+recorder. Only the Met.no weather dependency used by onboarding is explicitly
+added; you can remove that integration in the UI if unwanted.
+
+This is a NixOS-managed Core installation, not Home Assistant OS: there is no
+Supervisor or add-on store. Upstream does not officially support this installation
+method; NixOS maintains the packaging. Add companion services through Nix later.
+
+## First start
+
+From the repository root on Moby, make the new module visible to Git-backed flakes
+(if it is not already tracked), then rebuild:
+
+```sh
+git add machines/moby/home-assistant.nix
+sudo nixos-rebuild switch --flake .#moby
+```
+
+This applies **all** current system configuration changes, not just Home Assistant.
+A Home Manager switch alone will not install this system service.
+
+Open <http://127.0.0.1:8123> on Moby and create your owner account. Choose your
+home location and units during onboarding. From another computer, first run:
+
+```sh
+ssh -N -L 127.0.0.1:8123:127.0.0.1:8123 amunoz@moby.tail5e510f.ts.net
+```
+
+Then open the same URL on that computer while the tunnel remains running.
+There is no LAN or direct Tailscale listener. Moby's firewall is currently disabled,
+so `openFirewall = false` alone would **not** protect a listener on `0.0.0.0`.
+
+## Customize incrementally
+
+- For an integration configured through **Settings → Devices & services**, add
+  its domain to `services.home-assistant.extraComponents`, rebuild, then configure
+  it in the UI. For example: `extraComponents = [ "met" "hue" ];`.
+  This installs dependencies; it does not configure the integration. Without
+  discovery, you may need to enter the device or bridge's address manually.
+- YAML-configured integrations belong under `services.home-assistant.config`;
+  NixOS automatically includes dependencies for integrations declared there.
+- For local history later, add `recorder = { };` and `history = { };` under
+  `config`. The default recorder uses SQLite; no separate database is needed.
+- Before adding UI-edited automations, add
+  `automation = "!include automations.yaml";` under `config` and initialize the
+  file once with `sudo -u hass sh -c 'test -e /var/lib/hass/automations.yaml || printf "[]\n" > /var/lib/hass/automations.yaml'`.
+  Keep that file writable rather than putting UI-edited automations in the Nix store.
+
+Nix owns `configuration.yaml`; do not edit the generated file. Accounts,
+dashboards, UI integration settings, and other runtime state live in
+`/var/lib/hass` and persist across rebuilds. Back up that directory securely
+(including `.storage`); it contains credentials. Do not put passwords or tokens
+in Nix expressions, since the Nix store is readable by local users. Use a
+runtime `secrets.yaml`/agenix setup when an integration needs YAML secrets.
+
+## Check the service
+
+```sh
+systemctl status home-assistant
+journalctl -u home-assistant -b --no-pager -n 100
+curl -I http://127.0.0.1:8123/
+```

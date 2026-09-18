@@ -30,6 +30,7 @@
     ./ejabberd.nix
     ./marimohub-connector.nix
     ./hindsight.nix
+    ./home-assistant.nix
     # ./marimohub.nix # Disabled independently; review its module before enabling.
     # ./hedgedoc.nix # This wasn't as useful
     # ./org-gcal.nix # Removed until we migrate over

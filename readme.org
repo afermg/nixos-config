@@ -26,6 +26,9 @@ Available entrypoints:
 ** Inspect Syncthing
 See [[file:docs/syncthing.md][Inspecting Syncthing manually]] for local GUI access, secure SSH forwarding to =moby=, synchronization checks, and troubleshooting.
 
+** Home Assistant
+See [[file:docs/home-assistant.md][Minimal Home Assistant on Moby]] for first-time setup, private web UI access, and incremental customization.
+
 ** System rebuild
 System-level changes (kernel/services on NixOS; Homebrew/dock/macOS defaults/launchd on Darwin) still go through the platform-specific rebuild.
 
