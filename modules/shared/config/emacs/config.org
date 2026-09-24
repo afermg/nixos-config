@@ -2339,6 +2339,313 @@ and plain-text URLs."
                      (current-buffer))))
           (display-buffer buf '(display-buffer-pop-up-window))))))
 
+  (require 'bibtex)
+  (require 'cl-lib)
+  (require 'subr-x)
+  (require 'eww)
+
+  (defvar afm/bib-eww-review-items nil)
+  (defvar afm/bib-eww-review-index 0)
+  (defvar afm/bib-eww-review-source-buffer nil)
+  (defvar afm/bib-eww-review-window nil)
+  (defvar afm/bib-eww-review-author-count 3)
+  (defvar-local afm/bib-eww-review-buffer-item nil)
+  (defvar-local afm/bib-eww-review-buffer-index 0)
+
+  (defvar afm/bib-eww-review-mode-map
+    (let ((map (make-sparse-keymap)))
+      (define-key map (kbd "n") #'afm/bib-eww-review-next)
+      (define-key map (kbd "p") #'afm/bib-eww-review-previous)
+      (define-key map (kbd "q") #'afm/bib-eww-review-quit)
+      (define-key map (kbd "s") #'afm/bib-eww-review-source)
+      (define-key map (kbd "w") #'afm/bib-eww-review-copy-url)
+      (define-key map (kbd "o") #'afm/bib-eww-review-open-external)
+      map))
+
+  (define-minor-mode afm/bib-eww-review-mode
+    "Navigate BibTeX links one-by-one in EWW.
+
+Keys: n next, p previous, s source entry, w copy URL, o external browser, q quit."
+    :lighter " BibReview"
+    :keymap afm/bib-eww-review-mode-map)
+
+  (defun afm/bib-eww-review--field (entry field)
+    (cdr (assoc field entry)))
+
+  (defun afm/bib-eww-review--clean (s)
+    (when (stringp s)
+      (setq s (replace-regexp-in-string "[[:space:]\n\t]+" " " s))
+      (setq s (replace-regexp-in-string "[{}]" "" s))
+      (string-trim s)))
+
+  (defun afm/bib-eww-review--trim-url (s)
+    (setq s (string-trim s))
+    (while (and (> (length s) 0)
+                (memq (aref s (1- (length s)))
+                      '(?\} ?\) ?\] ?, ?\; ?. ?\' ?\")))
+      (setq s (substring s 0 -1)))
+    s)
+
+  (defun afm/bib-eww-review--doi-url (doi)
+    (when-let* ((clean (afm/bib-eww-review--clean doi)))
+      (setq clean (afm/bib-eww-review--trim-url clean))
+      (setq clean
+            (replace-regexp-in-string
+             "\\`https?://\\(?:dx\\.\\)?doi\\.org/" "" clean))
+      (concat "https://doi.org/" clean)))
+
+  (defun afm/bib-eww-review--entry-url (entry)
+    (or (when-let* ((url (afm/bib-eww-review--field entry "url")))
+          (afm/bib-eww-review--trim-url (afm/bib-eww-review--clean url)))
+        (afm/bib-eww-review--doi-url (afm/bib-eww-review--field entry "doi"))))
+
+  (defun afm/bib-eww-review--collect (&optional beg end)
+    (require 'bibtex)
+    (let ((end-marker (copy-marker (or end (point-max))))
+          items)
+      (save-excursion
+        (goto-char (or beg (point-min)))
+        (while (re-search-forward "^[[:space:]]*@" end-marker t)
+          (let ((start (match-beginning 0)))
+            (goto-char start)
+            (condition-case nil
+                (let* ((entry (bibtex-parse-entry t))
+                       (url (afm/bib-eww-review--entry-url entry)))
+                  (when (and url (string-match-p "\\`https?://" url))
+                    (push (list :key (afm/bib-eww-review--field entry "=key=")
+                                :url url
+                                :title (afm/bib-eww-review--clean
+                                        (afm/bib-eww-review--field entry "title"))
+                                :author (afm/bib-eww-review--clean
+                                         (afm/bib-eww-review--field entry "author"))
+                                :year (afm/bib-eww-review--clean
+                                       (afm/bib-eww-review--field entry "year"))
+                                :start start
+                                :buffer (current-buffer))
+                          items))
+                  (bibtex-end-of-entry))
+              (error (goto-char (1+ start)))))))
+      (setq items (nreverse items))
+      (let ((seen nil)
+            deduped)
+        (dolist (item items)
+          (unless (member (plist-get item :url) seen)
+            (push (plist-get item :url) seen)
+            (push item deduped)))
+        (nreverse deduped))))
+
+  (defun afm/bib-eww-review--current-item ()
+    (nth afm/bib-eww-review-index afm/bib-eww-review-items))
+
+  (defun afm/bib-eww-review--first-authors (authors)
+    (let* ((raw (or authors "Unknown authors"))
+           (parts (split-string raw "[[:space:]]+and[[:space:]]+" t))
+           (shown (cl-subseq parts 0 (min (length parts) afm/bib-eww-review-author-count)))
+           (suffix (if (> (length parts) (length shown)) " et al." "")))
+      (concat (mapconcat #'identity shown "; ") suffix)))
+
+  (defun afm/bib-eww-review--summary-lines (&optional error-message item index)
+    (let* ((item (or item afm/bib-eww-review-buffer-item
+                     (afm/bib-eww-review--current-item)))
+           (index (or index afm/bib-eww-review-buffer-index
+                      afm/bib-eww-review-index))
+           (title (truncate-string-to-width
+                   (or (plist-get item :title) "Untitled") 120 nil nil "..."))
+           (authors (truncate-string-to-width
+                     (afm/bib-eww-review--first-authors (plist-get item :author))
+                     120 nil nil "..."))
+           (year (or (plist-get item :year) "n.d."))
+           (key (or (plist-get item :key) "no-key"))
+           (url (or (plist-get item :url) "")))
+      (list
+       (format "%sBib %d/%d  %s  [%s]"
+               (if error-message (concat "EWW error: " error-message "  ") "")
+               (1+ index)
+               (length afm/bib-eww-review-items)
+               title key)
+       (format "Year: %s | First authors: %s | URL: %s" year authors url))))
+
+  (defun afm/bib-eww-review--message (&optional error-message item index)
+    (let ((lines (afm/bib-eww-review--summary-lines error-message item index)))
+      (message "%s -- %s  [n/p/s/w/o/q]" (car lines) (cadr lines))))
+
+  (defun afm/bib-eww-review--set-header (&optional error-message)
+    (let ((lines (afm/bib-eww-review--summary-lines error-message)))
+      (setq-local header-line-format
+                  (concat " " (car lines) "    keys: n next, p prev, s source, w copy URL, o browser, q quit"))))
+
+  (defun afm/bib-eww-review--remove-overview ()
+    (let ((inhibit-read-only t))
+      (save-excursion
+        (goto-char (point-min))
+        (when (get-text-property (point) 'afm-bib-eww-review-overview)
+          (let ((end (next-single-property-change
+                      (point) 'afm-bib-eww-review-overview nil (point-max))))
+            (delete-region (point) end))))))
+
+  (defun afm/bib-eww-review--insert-overview ()
+    (when (and afm/bib-eww-review-mode afm/bib-eww-review-buffer-item)
+      (let* ((lines (afm/bib-eww-review--summary-lines))
+             (text (concat (car lines) "\n" (cadr lines)
+                           "\nKeys: n next, p previous, s source, w copy URL, o external browser, q quit\n\n"))
+             (inhibit-read-only t))
+        (afm/bib-eww-review--remove-overview)
+        (save-excursion
+          (goto-char (point-min))
+          (insert (propertize text
+                              'afm-bib-eww-review-overview t
+                              'face '(:weight bold)))))))
+
+  (defun afm/bib-eww-review--review-buffer-live-p ()
+    (and (window-live-p afm/bib-eww-review-window)
+         (buffer-live-p (window-buffer afm/bib-eww-review-window))
+         (with-current-buffer (window-buffer afm/bib-eww-review-window)
+           afm/bib-eww-review-mode)))
+
+  (defun afm/bib-eww-review--show ()
+    (unless afm/bib-eww-review-items
+      (user-error "No active BibTeX EWW review"))
+    (let* ((item (afm/bib-eww-review--current-item))
+           (index afm/bib-eww-review-index)
+           (url (plist-get item :url))
+           eww-buffer
+           error-message)
+      (condition-case err
+          (progn
+            (require 'eww)
+            (if (afm/bib-eww-review--review-buffer-live-p)
+                (progn
+                  (select-window afm/bib-eww-review-window)
+                  (eww url)
+                  (setq eww-buffer (current-buffer)))
+              (setq eww-buffer
+                    (save-window-excursion
+                      (eww url t)
+                      (current-buffer)))
+              (setq afm/bib-eww-review-window
+                    (display-buffer eww-buffer
+                                    '((display-buffer-pop-up-window)
+                                      (inhibit-same-window . t))))
+              (select-window afm/bib-eww-review-window))
+            (with-current-buffer eww-buffer
+              (setq-local afm/bib-eww-review-buffer-item item
+                          afm/bib-eww-review-buffer-index index)
+              (afm/bib-eww-review-mode 1)
+              (afm/bib-eww-review--set-header)
+              (add-hook 'eww-after-render-hook
+                        #'afm/bib-eww-review--insert-overview nil t)
+              (afm/bib-eww-review--insert-overview)))
+        (error
+         (setq error-message (error-message-string err))))
+      (when error-message
+        (with-current-buffer (get-buffer-create "*BibTeX EWW review errors*")
+          (goto-char (point-max))
+          (insert (format "%s\t%s\t%s\n"
+                          (current-time-string) url error-message))))
+      (when (and eww-buffer (buffer-live-p eww-buffer))
+        (with-current-buffer eww-buffer
+          (afm/bib-eww-review--set-header error-message)))
+      (afm/bib-eww-review--message error-message item index)))
+
+  (defun afm/bib-eww-review-next (&optional n)
+    "Open the next BibTeX review link in EWW."
+    (interactive "p")
+    (setq n (or n 1))
+    (unless afm/bib-eww-review-items
+      (user-error "No active BibTeX EWW review"))
+    (setq afm/bib-eww-review-index
+          (min (1- (length afm/bib-eww-review-items))
+               (max 0 (+ afm/bib-eww-review-index n))))
+    (afm/bib-eww-review--show))
+
+  (defun afm/bib-eww-review-previous (&optional n)
+    "Open the previous BibTeX review link in EWW."
+    (interactive "p")
+    (afm/bib-eww-review-next (- (or n 1))))
+
+  (defun afm/bib-eww-review-source ()
+    "Jump to the BibTeX source entry for the current review item."
+    (interactive)
+    (let ((item (afm/bib-eww-review--current-item)))
+      (unless item (user-error "No active BibTeX EWW review"))
+      (pop-to-buffer (plist-get item :buffer))
+      (goto-char (plist-get item :start))
+      (recenter)))
+
+  (defun afm/bib-eww-review-copy-url ()
+    "Copy the current BibTeX review URL."
+    (interactive)
+    (let ((url (plist-get (afm/bib-eww-review--current-item) :url)))
+      (unless url (user-error "No active BibTeX EWW review"))
+      (kill-new url)
+      (message "Copied current review URL")))
+
+  (defun afm/bib-eww-review-open-external ()
+    "Open the current BibTeX review URL with `browse-url'."
+    (interactive)
+    (let ((url (plist-get (afm/bib-eww-review--current-item) :url)))
+      (unless url (user-error "No active BibTeX EWW review"))
+      (browse-url url)))
+
+  (defun afm/bib-eww-review-quit ()
+    "Quit the active BibTeX EWW review session."
+    (interactive)
+    (setq afm/bib-eww-review-items nil
+          afm/bib-eww-review-index 0
+          afm/bib-eww-review-source-buffer nil
+          afm/bib-eww-review-window nil)
+    (afm/bib-eww-review-mode -1)
+    (message "Ended BibTeX EWW review"))
+
+  (defun afm/bib-eww-review--bib-buffer ()
+    (cond
+     ((or (derived-mode-p 'bibtex-mode)
+          (and buffer-file-name
+               (string-match-p "\\.bib\\'" buffer-file-name)))
+      (current-buffer))
+     ((and (buffer-live-p afm/bib-eww-review-source-buffer)
+           (with-current-buffer afm/bib-eww-review-source-buffer
+             (or (derived-mode-p 'bibtex-mode)
+                 (and buffer-file-name
+                      (string-match-p "\\.bib\\'" buffer-file-name)))))
+      afm/bib-eww-review-source-buffer)
+     (t
+      (let ((bib-buffers
+             (cl-remove-if-not
+              (lambda (buf)
+                (with-current-buffer buf
+                  (or (derived-mode-p 'bibtex-mode)
+                      (and buffer-file-name
+                           (string-match-p "\\.bib\\'" buffer-file-name)))))
+              (buffer-list))))
+        (cond
+         ((= (length bib-buffers) 1) (car bib-buffers))
+         ((null bib-buffers) (user-error "No BibTeX buffer is open"))
+         (t (user-error "Run from a BibTeX buffer; multiple BibTeX buffers are open")))))))
+
+  (defun afm/bib-eww-review-links (&optional beg end)
+    "Review BibTeX URL/DOI links one at a time in EWW.
+
+With an active region in a BibTeX buffer, collect entries only from that region.
+The EWW buffer uses these keys: n next, p previous, s source entry, w copy URL,
+o external browser, q quit."
+    (interactive
+     (when (and (use-region-p)
+                (or (derived-mode-p 'bibtex-mode)
+                    (and buffer-file-name
+                         (string-match-p "\\.bib\\'" buffer-file-name))))
+       (list (region-beginning) (region-end))))
+    (let ((source (afm/bib-eww-review--bib-buffer)))
+      (with-current-buffer source
+        (setq afm/bib-eww-review-source-buffer source
+              afm/bib-eww-review-window (and (afm/bib-eww-review--review-buffer-live-p)
+                                             afm/bib-eww-review-window)
+              afm/bib-eww-review-items (afm/bib-eww-review--collect beg end)
+              afm/bib-eww-review-index 0)))
+    (unless afm/bib-eww-review-items
+      (user-error "No URL or DOI links found"))
+    (afm/bib-eww-review--show))
+
   (defun afm/org-open-links-in-region (beg end)
     "Open every org link between BEG and END. With an active region use
   it; otherwise fall back to the current line so that a bare

@@ -139,10 +139,7 @@
           outputs.homeModules.pi-msg
         ];
 
-        hindsightBackupSyncthing = {
-          enable = true;
-          address = "100.79.40.39";
-        };
+        hindsightBackupSyncthing.enable = true;
 
         # Decrypt the existing Overleaf git-bridge credentials with
         # ~/.ssh/id_ed25519 when this Home Manager profile activates.
@@ -255,12 +252,7 @@
             extraSpecialArgs = { inherit inputs outputs; };
             modules = [
               outputs.homeModules.amunoz
-              {
-                hindsightBackupSyncthing = {
-                  enable = true;
-                  address = "100.126.147.16";
-                };
-              }
+              { hindsightBackupSyncthing.enable = true; }
             ];
           };
 
