@@ -78,12 +78,16 @@ let
         --env-file /run/hindsight/server.env \
         -e HINDSIGHT_API_MCP_ENABLED=false \
         -e HINDSIGHT_API_TENANT_EXTENSION=hindsight_api.extensions.builtin.tenant:ApiKeyTenantExtension \
+        -e CODEX_HOME=/home/hindsight/.codex \
         -e HINDSIGHT_API_LLM_PROVIDER=none \
         -e HINDSIGHT_API_WORKER_ENABLED=false \
+        -e HINDSIGHT_API_EMBEDDINGS_PROVIDER=openai-codex \
+        -e HINDSIGHT_API_RERANKER_PROVIDER=rrf \
         -e HINDSIGHT_API_WORKER_ID=ix-hindsight-restore-test \
         -v "$test_root/pg0:/home/hindsight/.pg0" \
         -v "$test_root/cache:/home/hindsight/.cache" \
         -v "$test_root/backup.zip:/restore/backup.zip:ro" \
+        -v /home/amunoz/.local/state/hindsight-codex:/home/hindsight/.codex \
         ${lib.escapeShellArg image} >/dev/null
 
       for attempt in $(seq 1 180); do
@@ -129,18 +133,21 @@ in
         ports = [ "0.0.0.0:8888:8888" ];
         environmentFiles = [ "/run/hindsight/server.env" ];
         environment = {
+          CODEX_HOME = "/home/hindsight/.codex";
           HINDSIGHT_API_MCP_ENABLED = "false";
           HINDSIGHT_API_TENANT_EXTENSION = "hindsight_api.extensions.builtin.tenant:ApiKeyTenantExtension";
           HINDSIGHT_API_LLM_PROVIDER = "none";
           HINDSIGHT_API_WORKER_ENABLED = "false";
           HINDSIGHT_API_WORKER_ID = "ix-hindsight";
-          HINDSIGHT_API_EMBEDDINGS_LOCAL_FORCE_CPU = "true";
-          HINDSIGHT_API_RERANKER_LOCAL_FORCE_CPU = "true";
+          HINDSIGHT_API_EMBEDDINGS_PROVIDER = "openai-codex";
+          HINDSIGHT_API_RERANKER_PROVIDER = "rrf";
+          HINDSIGHT_API_ENABLE_AUTO_CONSOLIDATION = "false";
         };
         volumes = [
           "${dataRoot}/pg0:/home/hindsight/.pg0"
           "${dataRoot}/cache:/home/hindsight/.cache"
           "${dataRoot}/backup-staging:/backups"
+          "/home/amunoz/.local/state/hindsight-codex:/home/hindsight/.codex"
           "${healthCheck}:/hindsight-healthcheck.py:ro"
         ];
         extraOptions = [
@@ -164,6 +171,7 @@ in
     "d ${dataRoot}/pg0 0700 amunoz users -"
     "d ${dataRoot}/cache 0700 amunoz users -"
     "d ${dataRoot}/backup-staging 0700 amunoz users -"
+    "d /home/amunoz/.local/state/hindsight-codex 0700 amunoz users -"
     "d /run/hindsight 0700 root root -"
     "d /home/amunoz/.config/hindsight 0700 amunoz users -"
     "d /home/amunoz/.local/state/hindsight 0700 amunoz users -"
@@ -173,6 +181,7 @@ in
   ];
 
   systemd.services.podman-hindsight-api = {
+    unitConfig.ConditionPathExists = "/home/amunoz/.local/state/hindsight-codex/auth.json";
     after = [
       "tailscaled.service"
       "network-online.target"
@@ -184,6 +193,10 @@ in
       ${pkgs.coreutils}/bin/install -d -m 0700 /run/hindsight
       if [ ! -s ${lib.escapeShellArg tokenFile} ]; then
         echo "Hindsight API token is missing from ${tokenFile}" >&2
+        exit 1
+      fi
+      if [ ! -s /home/amunoz/.local/state/hindsight-codex/auth.json ]; then
+        echo "Dedicated Hindsight Codex login is missing from /home/amunoz/.local/state/hindsight-codex/auth.json" >&2
         exit 1
       fi
       token=$(${pkgs.coreutils}/bin/cat ${lib.escapeShellArg tokenFile})
