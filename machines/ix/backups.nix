@@ -10,13 +10,10 @@ let
   ixHostAgeRecipient = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKY0holJSH6l/MeBPRWgzITfAVwT7dJESRBTP0pHjQA7";
   backupNow = pkgs.writeShellApplication {
     name = "ix-state-backup-now";
-    runtimeInputs = with pkgs; [
-      sudo
-      systemd
-    ];
+    runtimeInputs = with pkgs; [ systemd ];
     text = ''
       set -euo pipefail
-      exec sudo systemctl start ix-state-backup.service
+      exec /run/wrappers/bin/sudo systemctl start ix-state-backup.service
     '';
   };
 in
