@@ -2,8 +2,9 @@
 
 `ix` hosts the shared Hindsight REST API over Tailscale. Pi is the only agent
 adapter. The first ix deployment restores the last moby backup so recall keeps
-working while moby is off. New retention/extraction workers stay disabled until
-ix has its own dedicated Codex OAuth login; do not copy moby's live OAuth state.
+working while moby is off. The systemd unit is gated on ix's dedicated Codex
+OAuth login at `~/.local/state/hindsight-codex/auth.json`; do not copy moby's
+live OAuth state.
 
 ## Pinned server
 
@@ -11,7 +12,9 @@ ix has its own dedicated Codex OAuth login; do not copy moby's live OAuth state.
 - Source revision: `08995e3013858e705fb4ca27c0ade3a286ef4750`
 - API-only image: `ghcr.io/vectorize-io/hindsight-api:0.8.6@sha256:3db1536d84a14a10afbd08cc8f82bf4eec03c123d950705226c999bea14ca0f0`
 - Endpoint on ix: `http://127.0.0.1:8888` locally and `http://ix.tail5e510f.ts.net:8888` over Tailscale
-- Extraction provider/model: disabled on ix until a dedicated login is created
+- Embeddings provider: `openai-codex` after the dedicated ix login exists
+- Reranker: `rrf`
+- Retention/extraction worker: disabled initially; recall is the first target
 - MCP and the Control Plane are disabled.
 
 The API bearer token is stored as `secrets/hindsight-api-token.age` for hosts
@@ -23,8 +26,8 @@ that use agenix. ix keeps an owner-only runtime copy at
 The live database is `/var/lib/hindsight/pg0`. Never put that directory in
 Syncthing. Model cache and temporary backup state are under `/var/lib/hindsight/`.
 
-When extraction is enabled later, use a dedicated writable Codex auth home at
-`~/.local/state/hindsight-codex` and keep it out of synchronization:
+Create or repair the dedicated writable Codex auth home without touching normal
+Codex auth:
 
 ```bash
 install -d -m 0700 ~/.local/state/hindsight-codex
@@ -47,8 +50,9 @@ not omitted:
 sudo nixos-rebuild switch --flake "path:$PWD#ix"
 ```
 
-Cold initialization may take more than a minute while local embedding and
-reranking models download and PostgreSQL initializes.
+Cold initialization may take more than a minute while PostgreSQL initializes.
+The Pi 4 cannot run the image's default local embedding stack reliably, so ix
+uses Codex-backed embeddings and lightweight RRF reranking.
 
 ## Backups
 

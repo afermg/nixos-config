@@ -12,6 +12,7 @@
 
   home.packages = with pkgs; [
     pi-coding-agent
+    codex
     ripgrep
     fd
     jq
