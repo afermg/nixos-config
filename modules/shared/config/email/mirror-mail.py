@@ -171,7 +171,12 @@ class ImportHistory:
 
 
 def get_password() -> str:
-    """Read the MXroute password without putting it in configuration files."""
+    """Read a private runtime file when configured, otherwise use the vault."""
+    if password_file := os.environ.get("MIRROR_MAIL_PASSWORD_FILE"):
+        password = Path(password_file).read_text().strip()
+        if not password:
+            raise RuntimeError("The configured mail password file is empty")
+        return password
     result = subprocess.run(
         ["rbw", "get", RBW_ITEM_NAME],
         check=True,
