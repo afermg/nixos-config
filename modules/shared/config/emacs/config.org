@@ -3025,6 +3025,29 @@ These settings keep emacs from littering the filesystem with buffer backups. The
 
 test
 ** Project/Buffers/Perspectives
+*** Remember visited projects
+Register local projects independently of Magit's lazy loading. Dashboard
+launches also explicitly remember non-VCS working directories such as notes.
+#+NAME: project-registration
+#+BEGIN_SRC emacs-lisp
+  (require 'project)
+
+  (defun afm/project-auto-remember (&optional directory explicit)
+    "Remember the local project at DIRECTORY, defaulting to the current buffer.
+When EXPLICIT is non-nil, also remember directories outside version control."
+    (let ((directory (file-name-as-directory
+                      (expand-file-name (or directory default-directory)))))
+      ;; Merely visiting a buffer must not initiate a remote connection.
+      (when (and (not (file-remote-p directory))
+                 (file-directory-p directory))
+        (when-let* ((proj (or (project-current nil directory)
+                             (and explicit (cons 'transient directory)))))
+          (project-remember-project proj)))))
+
+  (add-hook 'find-file-hook #'afm/project-auto-remember)
+  (add-hook 'dired-mode-hook #'afm/project-auto-remember)
+#+END_SRC
+
 *** COMMENT Persp-mode
 #+begin_src emacs-lisp 
   (use-package persp-mode
@@ -3584,12 +3607,6 @@ Very useful for interactive parsing
       (add-to-list 'project-switch-commands
                    '(magit-project-status "Magit") t))
 
-    (defun afm/project-auto-remember ()
-      "Remember the current buffer's project so it shows up in `project-switch-project'."
-      (when-let* ((proj (project-current nil)))
-        (project-remember-project proj)))
-    (add-hook 'find-file-hook #'afm/project-auto-remember)
-
     ;; Tell meow to use insert state inside magit's TUI buffers. Magit binds
     ;; many single-key commands (s/u/c/P/F/l/d/x/RET/TAB …) that conflict
     ;; with meow's normal-state bindings. Same pattern as mu4e/ghostel/org-agenda
@@ -3766,6 +3783,12 @@ See [[https://github.com/afermg/emacs-llm-dashboard][afermg/emacs-llm-dashboard]
     (setq llm-dashboard-terminal-backend 'ghostel)
     :config
     (afm/llm-dashboard-post-load)
+
+    (defun afm/llm-dashboard-remember-project (cwd &rest _)
+      "Persist CWD in the project picker after a successful dashboard launch."
+      (afm/project-auto-remember cwd t))
+    (advice-add 'llm-dashboard--launch :after
+                #'afm/llm-dashboard-remember-project)
 
     ;; Some forges, including Overleaf, use an opaque hexadecimal project ID
     ;; as the remote URL basename.  In that case the checkout directory is a
