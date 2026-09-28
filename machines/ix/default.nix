@@ -53,6 +53,7 @@
     tmux
     curl
     htop
+    btop
     pciutils
     usbutils
     python3
