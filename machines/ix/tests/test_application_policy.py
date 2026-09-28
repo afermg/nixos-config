@@ -67,6 +67,23 @@ class ApplicationPolicyTests(unittest.TestCase):
         self.assertFalse(settings["enableInstallTelemetry"])
         self.assertFalse(settings["enableAnalytics"])
 
+    def test_hindsight_moves_to_ix_without_embedded_token(self):
+        home = (HOME / "hindsight.nix").read_text()
+        service = (ROOT / "machines/ix/hindsight.nix").read_text()
+        shared_client = (ROOT / "modules/shared/config/hindsight/client.nix").read_text()
+        extension = (ROOT / "modules/shared/config/hindsight/hindsight.ts").read_text()
+        self.assertIn('api_url = "http://127.0.0.1:8888";', home)
+        self.assertIn('token_file = "${home}/.config/hindsight/api-token";', home)
+        self.assertIn('".pi/agent/extensions/hindsight.ts"', home)
+        self.assertIn('ports = [ "0.0.0.0:8888:8888" ];', service)
+        self.assertIn('HINDSIGHT_API_LLM_PROVIDER = "none";', service)
+        self.assertIn('HINDSIGHT_API_WORKER_ENABLED = "false";', service)
+        self.assertIn('networking.firewall.interfaces.tailscale0.allowedTCPPorts = [ 8888 ];', service)
+        self.assertIn('api_url = "http://ix.tail5e510f.ts.net:8888";', shared_client)
+        self.assertIn('const DEFAULT_API_URL = "http://ix.tail5e510f.ts.net:8888";', extension)
+        self.assertNotIn("100.94.5.85", home + shared_client + extension)
+        self.assertNotRegex(service, r"hsk_[A-Za-z0-9]")
+
     def test_sync_stays_private_paused_and_session_scoped(self):
         text = (HOME / "syncthing.nix").read_text()
         for name in ("globalAnnounceEnabled", "localAnnounceEnabled", "relaysEnabled"):

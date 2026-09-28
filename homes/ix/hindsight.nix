@@ -7,7 +7,7 @@
 let
   home = config.home.homeDirectory;
   hindsightConfig = {
-    api_url = "http://ix.tail5e510f.ts.net:8888";
+    api_url = "http://127.0.0.1:8888";
     token_file = "${home}/.config/hindsight/api-token";
     state_dir = "${home}/.local/state/hindsight";
     reflect_mission = "Maintain durable technical knowledge about this Git repository across coding agents.";
@@ -15,19 +15,12 @@ let
   };
 in
 {
-  age.secrets.hindsight-api-token = {
-    file = ../../../../secrets/hindsight-api-token.age;
-    path = "${home}/.config/hindsight/api-token";
-    mode = "0600";
-    symlink = false;
-  };
-
   home.file = {
     ".config/hindsight/config.json" = {
       text = builtins.toJSON hindsightConfig;
     };
     ".pi/agent/extensions/hindsight.ts" = {
-      source = ./hindsight.ts;
+      source = ../../modules/shared/config/hindsight/hindsight.ts;
     };
   };
 

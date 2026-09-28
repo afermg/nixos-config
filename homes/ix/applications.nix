@@ -5,6 +5,7 @@
     ./mail.nix
     ./syncthing.nix
     ./editor-tools.nix
+    ./hindsight.nix
     ../../modules/shared/config/emacs/emacs-service.nix
     ../../modules/shared/config/fish/fish.nix
   ];
