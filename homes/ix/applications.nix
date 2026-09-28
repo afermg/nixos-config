@@ -65,7 +65,10 @@
       StartLimitIntervalSec = 60;
       StartLimitBurst = 3;
     };
-    Service.RestartSec = 5;
+    Service = {
+      RestartSec = "5s";
+      TimeoutStartSec = "5min";
+    };
   };
   home.file.".emacs.d/init.el".source =
     config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/.local/share/src/nixos-config/homes/ix/emacs.el";
