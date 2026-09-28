@@ -66,6 +66,7 @@
       StartLimitBurst = 3;
     };
     Service = {
+      Restart = pkgs.lib.mkForce "always";
       RestartSec = "5s";
       TimeoutStartSec = "5min";
     };
