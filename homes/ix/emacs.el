@@ -26,6 +26,9 @@
 (defvar ix--saved-warning-suppress-types warning-suppress-types)
 (defvar ix--saved-warning-suppress-log-types warning-suppress-log-types)
 (defvar ix--saved-enable-local-variables enable-local-variables)
+(defvar ix--shared-config-el
+  (expand-file-name
+   "~/.local/share/src/nixos-config/modules/shared/config/emacs/config.el"))
 
 (setq enable-local-variables nil
       warning-minimum-level :error
@@ -56,10 +59,18 @@
                            ix--suppressed-startup-messages))
       (apply orig format-string args))))
 
+(defun ix--preserve-current-shared-config-el (orig filename &rest args)
+  "Let ix reuse the current tangled shared config during daemon startup."
+  (unless (string-equal (expand-file-name filename) ix--shared-config-el)
+    (apply orig filename args)))
+
 (advice-add 'message :around #'ix--message-filter)
-(load (expand-file-name
-       "~/.local/share/src/nixos-config/modules/shared/config/emacs/init.el")
-      nil nil)
+(advice-add 'delete-file :around #'ix--preserve-current-shared-config-el)
+(unwind-protect
+    (load (expand-file-name
+           "~/.local/share/src/nixos-config/modules/shared/config/emacs/init.el")
+          nil nil)
+  (advice-remove 'delete-file #'ix--preserve-current-shared-config-el))
 
 (require 'mu4e)
 (unless (fboundp 'afm/mu4e-install-safe-delete)
