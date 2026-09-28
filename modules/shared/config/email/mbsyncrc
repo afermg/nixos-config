@@ -96,10 +96,27 @@ SubFolders Verbatim
 Path ~/.mail/purdue/
 Inbox ~/.mail/purdue/Inbox
 
+# Purdue is the source of truth for received mail. Never upload local copies
+# or push local moves/deletions back into these folders. Expunge Near only
+# applies Purdue's deletions locally; it must not expunge the source server.
 Channel purdue
 Far :purdue-remote:
 Near :purdue-local:
-Patterns * !Calendar !Calendar/* !Contacts !Journal !Notes !Outbox !Tasks
+Patterns * !"Sent Items" !Calendar !Calendar/* !Contacts !Journal !Notes !Outbox !Tasks
+Sync Pull
+Create Near
+Expunge Near
+CopyArrivalDate yes
+SyncState *
+
+# mu4e saves outgoing messages locally here; only Sent permits uploads.
+# Reuse the existing per-folder state: do not reset UIDs during this split.
+Channel purdue-sent
+Far :purdue-remote:
+Near :purdue-local:
+Patterns "Sent Items"
+Sync All
 Create Both
 Expunge Both
+CopyArrivalDate yes
 SyncState *
