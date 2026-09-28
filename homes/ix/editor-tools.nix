@@ -5,7 +5,6 @@
     fish
     fzf
     git
-    gh
     curl
     unzip
     gcc
