@@ -179,6 +179,12 @@ confirmation. Archive-import receipts were copied consistently; the complete
 mail pipeline uses local credentials, not a moby vault. Google Calendar
 integration/timers and its agenda entry were removed; personal files retained.
 
+GitHub HTTPS authentication uses the declarative Home Manager `gh` credential
+helper. After activating this profile, Git reuses your existing `gh auth login`
+credentials; no `gh auth setup-git` is needed. The Git config is Nix-managed and
+read-only, while GitHub login credentials remain in private runtime state, never
+in the repository or Nix store. Run Git commands from the repository directory.
+
 For web UIs, use the pinned alias above:
 
 ```sh
