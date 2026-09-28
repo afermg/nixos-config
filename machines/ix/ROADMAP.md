@@ -15,12 +15,16 @@ This roadmap applies **only to ix**. It is not a general nixos-config backlog.
 - [ ] Revisit the Samsung NVMe/enclosure zero-capacity issue before considering
   it as alternative storage for ix; do not assume either component is healthy.
 
-## Memory service
+## Memory and reader services
 
 - [ ] Decide how ix should access Hindsight while moby is off: a supported local
   deployment within ix's resource limits, or a separately available server.
 - [ ] If relocating Hindsight, use its supported backup/restore procedure and
   verify queries/retention. Never synchronize a live database with Syncthing.
+- [ ] Migrate Elfeed to ix so RSS state remains available when moby is off.
+  Inventory current feeds, unread/read state, update timers, and any private
+  feed credentials before moving state; verify terminal Emacs access and backup
+  the Elfeed database before changing the authoritative host.
 
 ## Network and relay services
 
