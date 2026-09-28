@@ -12,7 +12,7 @@ import {
 import { basename, dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
 
-const DEFAULT_API_URL = "http://100.94.5.85:8888";
+const DEFAULT_API_URL = "http://ix.tail5e510f.ts.net:8888";
 const REFLECT_MISSION =
   "Maintain durable technical knowledge about this Git repository across coding agents.";
 const RETAIN_MISSION =

@@ -6,6 +6,7 @@
     ../../modules/nixos/arm-emulation.nix
     ./hardware.nix
     ./direct-boot.nix
+    ./hindsight.nix
     ./services.nix
   ];
 
