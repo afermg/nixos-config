@@ -25,4 +25,8 @@ in
     personal_key
     oppy_key
   ];
+  "pi-msg-oppy-ix.age".publicKeys = [
+    personal_key
+    oppy_key
+  ];
 }

@@ -80,13 +80,17 @@ let
 
       domain=${lib.escapeShellArg cfg.domain}
       config=${lib.escapeShellArg configPath}
+      ejabberdctl=$(${pkgs.coreutils}/bin/readlink -f /run/current-system/sw/bin/ejabberdctl)
+      ctl_config=$(${pkgs.coreutils}/bin/readlink -f /etc/ejabberd/ejabberdctl.cfg)
       ctl=(
-        sudo -u ejabberd env
+        sudo -u ejabberd
+        /run/current-system/sw/bin/env -C /var/lib/ejabberd
         HOME=/var/lib/ejabberd
         ERL_EPMD_PORT=${toString cfg.ejabberdEpmdPort}
-        /run/current-system/sw/bin/ejabberdctl
+        "$ejabberdctl"
+        --node ejabberd@localhost
         --config /etc/ejabberd/ejabberd.yml
-        --ctl-config /etc/ejabberd/ejabberdctl.cfg
+        --ctl-config "$ctl_config"
         --spool /var/lib/ejabberd
         --logs /var/log/ejabberd
       )
@@ -114,7 +118,7 @@ let
 
       set_password() {
         local user=$1 password=$2
-        if "''${ctl[@]}" check_account "$user" "$domain" >/dev/null 2>&1; then
+        if "''${ctl[@]}" registered_users "$domain" | ${pkgs.gnugrep}/bin/grep -Fqx -- "$user"; then
           "''${ctl[@]}" change_password "$user" "$domain" "$password"
           echo "Updated $user@$domain"
         else
@@ -145,13 +149,17 @@ let
     trap 'rm -f "$secret"' EXIT
 
     bot_password=$(<"$secret")
+    ejabberdctl=$(/run/current-system/sw/bin/readlink -f /run/current-system/sw/bin/ejabberdctl)
+    ctl_config=$(/run/current-system/sw/bin/readlink -f /etc/ejabberd/ejabberdctl.cfg)
     ctl=(
-      sudo -u ejabberd env
+      sudo -u ejabberd
+      /run/current-system/sw/bin/env -C /var/lib/ejabberd
       HOME=/var/lib/ejabberd
       ERL_EPMD_PORT="$epmd_port"
-      /run/current-system/sw/bin/ejabberdctl
+      "$ejabberdctl"
+      --node ejabberd@localhost
       --config /etc/ejabberd/ejabberd.yml
-      --ctl-config /etc/ejabberd/ejabberdctl.cfg
+      --ctl-config "$ctl_config"
       --spool /var/lib/ejabberd
       --logs /var/log/ejabberd
     )
@@ -161,7 +169,7 @@ let
       exit 1
     fi
 
-    if "''${ctl[@]}" check_account "$user" "$domain" >/dev/null 2>&1; then
+    if "''${ctl[@]}" registered_users "$domain" | /run/current-system/sw/bin/grep -Fqx -- "$user"; then
       "''${ctl[@]}" change_password "$user" "$domain" "$bot_password"
       echo "Updated $user@$domain"
     else
