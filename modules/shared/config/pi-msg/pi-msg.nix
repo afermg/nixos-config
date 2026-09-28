@@ -116,9 +116,19 @@ let
       ${validateConfig}/bin/pi-msg-check-config
       bot_password=$(jq -er '.accounts.default.password' "$config")
 
+      account_exists() {
+        local user=$1 existing
+        while IFS= read -r existing; do
+          if [[ "$existing" == "$user" ]]; then
+            return 0
+          fi
+        done < <("''${ctl[@]}" registered_users "$domain" 2>/dev/null)
+        return 1
+      }
+
       set_password() {
         local user=$1 password=$2
-        if "''${ctl[@]}" check_account "$user" "$domain" >/dev/null 2>&1; then
+        if account_exists "$user"; then
           "''${ctl[@]}" change_password "$user" "$domain" "$password"
           echo "Updated $user@$domain"
         else
@@ -168,7 +178,17 @@ let
       exit 1
     fi
 
-    if "''${ctl[@]}" check_account "$user" "$domain" >/dev/null 2>&1; then
+    account_exists() {
+      local user=$1 existing
+      while IFS= read -r existing; do
+        if [[ "$existing" == "$user" ]]; then
+          return 0
+        fi
+      done < <("''${ctl[@]}" registered_users "$domain" 2>/dev/null)
+      return 1
+    }
+
+    if account_exists "$user"; then
       "''${ctl[@]}" change_password "$user" "$domain" "$bot_password"
       echo "Updated $user@$domain"
     else

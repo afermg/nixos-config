@@ -25,8 +25,13 @@ in
     personal_key
     ix_key
   ];
+  "pi-msg-moby-ix.age".publicKeys = keys;
   "hindsight-api-token.age".publicKeys = keys;
   "pi-msg-oppy.age".publicKeys = [
+    personal_key
+    oppy_key
+  ];
+  "pi-msg-oppy-ix.age".publicKeys = [
     personal_key
     oppy_key
   ];

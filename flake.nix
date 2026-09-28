@@ -152,10 +152,10 @@
 
         services.pi-msg = {
           enable = true;
-          domain = "moby.tail5e510f.ts.net";
+          domain = "ix.tail5e510f.ts.net";
           botUsername = "pi-oppy";
-          secretFile = ./secrets/pi-msg-oppy.age;
-          registrationSshHost = "moby.tail5e510f.ts.net";
+          secretFile = ./secrets/pi-msg-oppy-ix.age;
+          registrationSshHost = "ix.tail5e510f.ts.net";
         };
       };
 
@@ -239,9 +239,9 @@
               {
                 services.pi-msg = {
                   enable = true;
-                  domain = "moby.tail5e510f.ts.net";
-                  secretFile = ./secrets/pi-msg.age;
-                  registerLocalAccounts = true;
+                  domain = "ix.tail5e510f.ts.net";
+                  secretFile = ./secrets/pi-msg-moby-ix.age;
+                  registrationSshHost = "ix.tail5e510f.ts.net";
                 };
               }
             ];
