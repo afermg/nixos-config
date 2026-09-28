@@ -76,13 +76,53 @@ class ApplicationPolicyTests(unittest.TestCase):
         self.assertIn('/.pi/agent/sessions"', text)
         self.assertNotIn('/.pi/agent"', text)
 
-    def test_home_assistant_is_minimal_and_fresh(self):
+    def test_home_assistant_is_minimal_with_explicit_roborock_dependencies(self):
         text = (ROOT / "machines/ix/services.nix").read_text()
         self.assertIn('server_host = "127.0.0.1";', text)
-        self.assertNotIn('"roborock"', text)
+        components = re.search(r"extraComponents\s*=\s*\[([^]]*)\]", text)
+        self.assertIsNotNone(components)
+        self.assertEqual(re.findall(r'"([^"]+)"', components.group(1)), ["met", "roborock"])
+        self.assertNotRegex(text, r"(?m)^\s*default_config\s*=")
+        self.assertNotRegex(text, r"(?m)^\s*roborock\s*=")
         self.assertNotIn("ConditionPathExists", text)
         self.assertNotIn("raspi4-ha-check", text)
         self.assertIn("firewall.interfaces.tailscale0.allowedTCPPorts", text)
+
+    def test_home_assistant_explicitly_enables_companion_app(self):
+        text = (ROOT / "machines/ix/services.nix").read_text()
+        config = text.split('    config = {', 1)[1]
+        self.assertIn('mobile_app = { };', config)
+        self.assertNotRegex(config, r'(?m)^\s*default_config\s*=')
+        self.assertIn('server_host = "127.0.0.1";', config)
+
+    def test_home_assistant_lan_proxy_preserves_private_backend(self):
+        text = (ROOT / "machines/ix/services.nix").read_text()
+        self.assertIn('systemd.sockets.home-assistant-lan = {', text)
+        self.assertIn('wantedBy = [ "sockets.target" ];', text)
+        self.assertIn('listenStreams = [ "0.0.0.0:8124" ];', text)
+        self.assertIn('socketConfig.BindToDevice = "end0";', text)
+        self.assertIn('requires = [ "home-assistant.service" ];', text)
+        self.assertIn('systemd-socket-proxyd 127.0.0.1:8123";', text)
+        self.assertIn('DynamicUser = true;', text)
+        self.assertIn('ProtectSystem = "strict";', text)
+        self.assertRegex(text, r'RestrictAddressFamilies = \[\s*"AF_INET"\s*"AF_UNIX"\s*\];')
+        self.assertIn('server_host = "127.0.0.1";', text)
+        self.assertNotRegex(text, r"(?m)^\s*(trusted_networks|trusted_proxies|use_x_forwarded_for)\s*=")
+        self.assertNotIn('[::]', text)
+
+    def test_home_assistant_lan_firewall_is_ipv4_subnet_scoped(self):
+        text = (ROOT / "machines/ix/services.nix").read_text()
+        rule = re.search(r'homeAssistantLanRule = "([^"]+)";', text)
+        self.assertIsNotNone(rule)
+        self.assertEqual(
+            rule.group(1),
+            '-i end0 -s 192.168.1.0/24 -d 192.168.1.0/24 -p tcp --dport 8124 '
+            '-m comment --comment ix-home-assistant-lan -j nixos-fw-accept',
+        )
+        self.assertIn('iptables -w -A nixos-fw ${homeAssistantLanRule}', text)
+        self.assertIn('iptables -w -D nixos-fw ${homeAssistantLanRule} 2>/dev/null || true', text)
+        self.assertNotRegex(text, r'allowedTCPPorts\s*=\s*\[[^]]*\b812[34]\b')
+        self.assertNotRegex(text, r'trustedInterfaces\s*=\s*\[[^]]*"end0"')
 
 
 if __name__ == "__main__":
