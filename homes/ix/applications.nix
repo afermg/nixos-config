@@ -5,6 +5,7 @@
     ./mail.nix
     ./syncthing.nix
     ./editor-tools.nix
+    ../../modules/shared/config/emacs/emacs-service.nix
     ../../modules/shared/config/fish/fish.nix
   ];
 
@@ -29,9 +30,15 @@
     settings.prefix = "${config.home.homeDirectory}/.local";
   };
 
-  programs.emacs = {
+  afm.emacsService = {
     enable = true;
     package = pkgs.emacs-nox;
+    clientEnable = false;
+    timeoutStartSec = "5min";
+    startLimitIntervalSec = 60;
+    startLimitBurst = 3;
+    earlyInitFile = "${config.home.homeDirectory}/.local/share/src/nixos-config/homes/ix/emacs-early-init.el";
+    initFile = "${config.home.homeDirectory}/.local/share/src/nixos-config/homes/ix/emacs.el";
     # Keep mu4e native/matched. Shared Lisp packages remain managed by Straight.
     extraPackages = epkgs: [
       epkgs.mu4e
@@ -55,26 +62,6 @@
       ))
     ];
   };
-  services.emacs = {
-    enable = true;
-    startWithUserSession = true;
-    client.enable = false;
-  };
-  systemd.user.services.emacs = {
-    Unit = {
-      StartLimitIntervalSec = 60;
-      StartLimitBurst = 3;
-    };
-    Service = {
-      Restart = pkgs.lib.mkForce "always";
-      RestartSec = "5s";
-      TimeoutStartSec = "5min";
-    };
-  };
-  home.file.".emacs.d/early-init.el".source =
-    config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/.local/share/src/nixos-config/homes/ix/emacs-early-init.el";
-  home.file.".emacs.d/init.el".source =
-    config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/.local/share/src/nixos-config/homes/ix/emacs.el";
   home.file.".pi/agent/settings.json".source =
     config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/.local/share/src/nixos-config/homes/ix/pi-settings.json";
 }
