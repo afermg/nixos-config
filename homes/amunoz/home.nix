@@ -124,6 +124,7 @@ in
   };
 
   imports = [
+    ../../modules/shared/config/fish/fish.nix
     ../../modules/shared/config/emacs/emacs-service.nix
     ../../modules/shared/config/opencode/opencode.nix
     ../../modules/shared/config/claude/claude.nix
@@ -158,50 +159,6 @@ in
   systemd.user.services = pkgs.lib.mkIf atuin_daemon_p {
     atuin-daemon.Unit.After = [ "agenix.service" ];
     atuin-daemon.Unit.Requires = [ "agenix.service" ];
-  };
-
-  programs.fish = {
-    enable = true;
-    plugins = [
-      # Enable a plugin (here grc for colorized command output) from nixpkgs
-      {
-        name = "pure";
-        src = pkgs.fishPlugins.pure.src;
-      }
-      {
-        name = "autopair";
-        src = pkgs.fishPlugins.autopair.src;
-      }
-      {
-        name = "fishbang";
-        src = pkgs.fishPlugins.fishbang.src;
-      }
-      {
-        name = "fish-you-should-use";
-        src = pkgs.fishPlugins.fish-you-should-use.src;
-      }
-      {
-        name = "sponge";
-        src = pkgs.fishPlugins.sponge.src;
-      }
-      {
-        name = "async-prompt";
-        src = pkgs.fishPlugins.async-prompt.src;
-      }
-      # Incompatible with async
-      # {
-      #   name = "transient-fish";
-      #   src = pkgs.fishPlugins.transient-fish.src;
-      # }
-    ];
-    interactiveShellInit = ''
-      set --universal pure_enable_nixdevshell true
-      set -gx FZF_DEFAULT_OPTS "--bind=alt-k:up,alt-j:down --expect=tab,enter --layout=reverse 
-        --height=17 --delimiter='\t' --with-nth=1 
-          --preview-window='border-rounded' --prompt='  ' --marker=' ' --pointer=' ' 
-          --separator='─' --scrollbar='┃' --layout='reverse' 
-        "
-    '';
   };
 
   # Generate ~/.zshrc on Darwin, where zsh is the account login shell. This
