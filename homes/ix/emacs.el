@@ -4,6 +4,7 @@
 ;; the native tools; Straight's architecture-independent sources are portable.
 (require 'exec-path-from-shell)
 (require 'seq)
+(require 'warnings)
 
 ;; The headless service loads Straight-managed packages from source. Avoid
 ;; native JIT compilation during daemon startup: it is noisy on new Emacs
@@ -19,27 +20,46 @@
   (unless (fboundp fn)
     (defalias fn (lambda (&optional _arg) nil))))
 
+(defvar ix--filter-startup-messages t
+  "Whether ix should suppress expected headless daemon startup noise.")
+(defvar ix--saved-warning-minimum-level warning-minimum-level)
+(defvar ix--saved-warning-suppress-types warning-suppress-types)
+(defvar ix--saved-warning-suppress-log-types warning-suppress-log-types)
+(defvar ix--saved-enable-local-variables enable-local-variables)
+
+(setq enable-local-variables nil
+      warning-minimum-level :error
+      warning-suppress-types '((files) (bytecomp) (comp))
+      warning-suppress-log-types warning-suppress-types)
+
 (defvar ix--suppressed-startup-messages
-  '("^Warning: Org source not found\\. Adding Org to package-archives\\.$")
+  '(
+    "^Warning: Org source not found\\. Adding Org to package-archives\\.$"
+    "^.*Warning (files): Missing .*lexical-binding.* cookie"
+    "^You can add one with .*elisp-enable-lexical-binding"
+    "^See .*Selecting Lisp Dialect.*"
+    "^for more information\\.$"
+    "^.*: Warning: .* is an obsolete .*"
+    "Making lexical-binding buffer-local while locally let-bound!"
+    )
   "Expected shared-startup messages suppressed for ix's headless daemon.")
 
 (defun ix--message-filter (orig format-string &rest args)
-  "Suppress known noisy ix daemon startup messages around shared init load."
+  "Suppress known noisy ix daemon startup messages."
   (let ((text (when (stringp format-string)
                 (condition-case nil
                     (apply #'format-message format-string args)
                   (error format-string)))))
-    (unless (and text
+    (unless (and ix--filter-startup-messages
+                 text
                  (seq-some (lambda (regexp) (string-match-p regexp text))
                            ix--suppressed-startup-messages))
       (apply orig format-string args))))
 
 (advice-add 'message :around #'ix--message-filter)
-(unwind-protect
-    (load (expand-file-name
-           "~/.local/share/src/nixos-config/modules/shared/config/emacs/init.el")
-          nil nil)
-  (advice-remove 'message #'ix--message-filter))
+(load (expand-file-name
+       "~/.local/share/src/nixos-config/modules/shared/config/emacs/init.el")
+      nil nil)
 
 (require 'mu4e)
 (unless (fboundp 'afm/mu4e-install-safe-delete)
@@ -77,3 +97,11 @@
 (if (daemonp)
     (run-at-time 10 nil #'ix-start-mu4e)
   (ix-start-mu4e))
+
+(run-at-time 60 nil
+             (lambda ()
+               (setq ix--filter-startup-messages nil
+                     enable-local-variables ix--saved-enable-local-variables
+                     warning-minimum-level ix--saved-warning-minimum-level
+                     warning-suppress-types ix--saved-warning-suppress-types
+                     warning-suppress-log-types ix--saved-warning-suppress-log-types)))
