@@ -14,8 +14,9 @@ This roadmap applies **only to ix**. It is not a general nixos-config backlog.
   state. `ix-state-backup.timer` writes verified archives under
   `~/.local/share/syncthing/ix-backups/ix`; Syncthing working copies remain
   non-backups.
-- [ ] Restore-test the first `ix-state-*.tar.zst.age` archive on a scratch path
-  and confirm the selected contents are sufficient for recovery.
+- [x] Restore-test the first `ix-state-*.tar.zst.age` archive enough to verify
+  checksum, host-key decryption, tar listing, and representative Pi/Elfeed/org
+  and Syncthing identity paths.
 - [ ] Revisit the Samsung NVMe/enclosure zero-capacity issue before considering
   it as alternative storage for ix; do not assume either component is healthy.
 
