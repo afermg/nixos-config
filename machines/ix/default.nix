@@ -3,6 +3,7 @@
 {
   imports = [
     inputs.home-manager.nixosModules.home-manager
+    ../../modules/nixos/arm-emulation.nix
     ./hardware.nix
     ./direct-boot.nix
     ./services.nix
@@ -56,6 +57,8 @@
     usbutils
     python3
   ];
+  nix.armEmulation.enable = true;
+
   nix.settings = {
     experimental-features = [
       "nix-command"

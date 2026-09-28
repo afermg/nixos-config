@@ -14,6 +14,7 @@
     # If you want to use modules from other flakes (such as nixos-hardware):
     # inputs.hardware.nixosModules.common-pc-ssd
     inputs.home-manager.nixosModules.home-manager
+    outputs.nixosModules."arm-emulation"
 
     # Import your generated (nixos-generate-config) hardware configuration
     # Disko configuration
@@ -148,6 +149,11 @@
     name = "nix/path/${name}";
     value.source = value.flake;
   }) config.nix.registry;
+
+  nix.armEmulation = {
+    enable = true;
+    systems = [ "armv7l-linux" ];
+  };
 
   nix.settings = {
     # Enable flakes and new 'nix' command
