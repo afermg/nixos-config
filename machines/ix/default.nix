@@ -6,6 +6,7 @@
     ../../modules/nixos/arm-emulation.nix
     ./hardware.nix
     ./direct-boot.nix
+    ./ejabberd.nix
     ./hindsight.nix
     ./services.nix
   ];
@@ -44,6 +45,7 @@
   home-manager = {
     useGlobalPkgs = true;
     useUserPackages = true;
+    extraSpecialArgs = { inherit inputs; };
     backupFileExtension = "ix-before-hm";
     users.amunoz = import ../../homes/ix/home.nix;
   };

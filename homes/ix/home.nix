@@ -1,8 +1,14 @@
 # Intentionally independent from homeModules.amunoz and the desktop profile.
 # Applications were added only after normal boot, recovery, and rollback passed.
-{ ... }:
+{ inputs, ... }:
 {
-  imports = [ ./applications.nix ];
+  _module.args.piMsgInputs = inputs;
+
+  imports = [
+    inputs.agenix.homeManagerModules.default
+    ../../modules/shared/config/pi-msg/pi-msg.nix
+    ./applications.nix
+  ];
   home = {
     username = "amunoz";
     homeDirectory = "/home/amunoz";
@@ -34,4 +40,14 @@
     };
   };
   xdg.enable = true;
+
+  age.identityPaths = [ "/home/amunoz/.ssh/id_ed25519_github_ix" ];
+
+  services.pi-msg = {
+    enable = true;
+    domain = "ix.tail5e510f.ts.net";
+    secretFile = ../../secrets/pi-msg-ix.age;
+    registerLocalAccounts = true;
+    requireAccountsReadyMarker = true;
+  };
 }

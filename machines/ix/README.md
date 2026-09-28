@@ -257,7 +257,33 @@ later Mac/tailnet reconciliation. That work was explicitly removed from the
 migration completion gate. Do not enable discovery/relays or clone a Tailscale
 identity to bypass enrollment. Peer addresses use Tailscale DNS names, not fixed
 IPs. The device ID was emailed privately, not published here; the debrief lists
-the local GUI-password location. Hindsight was not moved.
+the local GUI-password location.
+
+## Reader and relay services
+
+Hindsight runtime state now lives on ix, with the Pi client pointed at
+`http://127.0.0.1:8888` locally and `http://ix.tail5e510f.ts.net:8888` over the
+tailnet. The service is intentionally skipped until a dedicated Codex OAuth file
+exists at `~/.local/state/hindsight-codex/auth.json`; create it with:
+
+```bash
+install -d -m 0700 ~/.local/state/hindsight-codex
+CODEX_HOME=~/.local/state/hindsight-codex codex login --device-auth
+sudo systemctl restart podman-hindsight-api.service
+```
+
+`pi-msg` is configured for ix with a separate `pi-msg-ix.age` secret and
+Tailscale-only ejabberd on `ix.tail5e510f.ts.net`. The user service is skipped
+until the account-registration marker exists. After deployment and after choosing
+the phone account password, run:
+
+```bash
+pi-msg-register-accounts
+systemctl --user status pi-msg.service
+```
+
+Keep the moby relay secret as rollback until phone and bot logins are verified
+against ix.
 
 ## Foundation defaults and migration boundary
 
