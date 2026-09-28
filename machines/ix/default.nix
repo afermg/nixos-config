@@ -7,6 +7,7 @@
     ./backups.nix
     ./hardware.nix
     ./direct-boot.nix
+    ./dns.nix
     ./ejabberd.nix
     ./hindsight.nix
     ./services.nix

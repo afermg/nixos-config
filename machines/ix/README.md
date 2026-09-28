@@ -298,6 +298,24 @@ ix-state-backup-now
 journalctl -u ix-state-backup.service
 ```
 
+## DNS blocking
+
+ix provides Pi-hole-like DNS blocking through Blocky on its Tailscale IPv4 only:
+`100.114.49.10:53`. The HTTP status endpoint stays on `127.0.0.1:4000`.
+Upstreams are Quad9 and Cloudflare DNS-over-HTTPS, and the initial denylist is
+StevenBlack's hosts list with Tailscale domains allowlisted. No DHCP, router, or
+Tailscale DNS setting points clients at ix yet, so rollback is immediate: keep
+clients on their current resolvers or remove the client-side DNS setting being
+tested. Blocky state under `/var/lib/blocky` is included in ix encrypted state
+backups.
+
+Test from a tailnet client before any rollout:
+
+```bash
+dig @100.114.49.10 example.com
+dig @100.114.49.10 doubleclick.net
+```
+
 ## Foundation defaults and migration boundary
 
 - Two Nix build jobs/cores; 25% RAM zram; no physical swap or HDD TRIM.
