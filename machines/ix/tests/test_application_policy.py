@@ -90,6 +90,21 @@ class ApplicationPolicyTests(unittest.TestCase):
         apps = (HOME / "applications.nix").read_text()
         self.assertIn("codex", apps)
 
+    def test_pi_msg_relay_moves_to_ix_without_embedded_password(self):
+        home = (HOME / "home.nix").read_text()
+        relay = (ROOT / "machines/ix/ejabberd.nix").read_text()
+        secrets = (ROOT / "secrets/secrets.nix").read_text()
+        self.assertIn("../../modules/shared/config/pi-msg/pi-msg.nix", home)
+        self.assertIn('age.identityPaths = [ "/home/amunoz/.ssh/id_ed25519_github_ix" ];', home)
+        self.assertIn('domain = "ix.tail5e510f.ts.net";', home + relay)
+        self.assertIn('secretFile = ../../secrets/pi-msg-ix.age;', home)
+        self.assertIn("registerLocalAccounts = true;", home)
+        self.assertIn("requireAccountsReadyMarker = true;", home)
+        self.assertIn('tailscaleIPv4 = "100.114.49.10";', relay)
+        self.assertIn("networking.firewall.interfaces.tailscale0.allowedTCPPorts", relay)
+        self.assertIn('"pi-msg-ix.age".publicKeys', secrets)
+        self.assertNotRegex(home + relay + secrets, r"hsk_[A-Za-z0-9]")
+
     def test_sync_stays_private_paused_and_session_scoped(self):
         text = (HOME / "syncthing.nix").read_text()
         for name in ("globalAnnounceEnabled", "localAnnounceEnabled", "relaysEnabled"):

@@ -18,6 +18,7 @@ let
   ownerJid = "${cfg.ownerUsername}@${cfg.domain}";
   botJid = "${cfg.botUsername}@${cfg.domain}";
   configPath = "${config.xdg.configHome}/pi-msg/config.json";
+  accountsReadyMarker = "${config.xdg.configHome}/pi-msg/accounts-ready";
   workspace = "${config.home.homeDirectory}/${cfg.workspaceDirectory}";
 
   # Build with the personal flake's pinned Go toolchain. Consumers such as
@@ -74,7 +75,10 @@ let
 
   registerLocalAccounts = pkgs.writeShellApplication {
     name = "pi-msg-register-accounts";
-    runtimeInputs = [ pkgs.jq ];
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.jq
+    ];
     text = ''
       set -euo pipefail
 
@@ -127,6 +131,9 @@ let
       set_password ${lib.escapeShellArg cfg.botUsername} "$bot_password"
       unset owner_password owner_password_confirm bot_password
 
+      mkdir -p ${lib.escapeShellArg (builtins.dirOf accountsReadyMarker)}
+      : > ${lib.escapeShellArg accountsReadyMarker}
+      chmod 0600 ${lib.escapeShellArg accountsReadyMarker}
       systemctl --user try-restart pi-msg.service || true
       echo
       echo "Accounts ready:"
@@ -214,6 +221,9 @@ let
         ${lib.escapeShellArg (toString cfg.ejabberdEpmdPort)}
       ssh -t "$host" "$remote_command"
 
+      mkdir -p ${lib.escapeShellArg (builtins.dirOf accountsReadyMarker)}
+      : > ${lib.escapeShellArg accountsReadyMarker}
+      chmod 0600 ${lib.escapeShellArg accountsReadyMarker}
       systemctl --user try-restart pi-msg.service || true
       echo
       echo "Accounts ready:"
@@ -281,6 +291,12 @@ in
       default = 4370;
       description = "Loopback EPMD port used by the local ejabberd instance.";
     };
+
+    requireAccountsReadyMarker = mkOption {
+      type = types.bool;
+      default = false;
+      description = "Skip the pi-msg user service until the registration helper has created the local accounts marker.";
+    };
   };
 
   config = mkIf cfg.enable {
@@ -324,6 +340,9 @@ in
           "network-online.target"
         ];
         Requires = [ "agenix.service" ];
+      }
+      // lib.optionalAttrs cfg.requireAccountsReadyMarker {
+        ConditionPathExists = accountsReadyMarker;
       };
       Service = {
         ExecStartPre = "${validateConfig}/bin/pi-msg-check-config";

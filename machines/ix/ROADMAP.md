@@ -17,19 +17,25 @@ This roadmap applies **only to ix**. It is not a general nixos-config backlog.
 
 ## Memory and reader services
 
-- [ ] Decide how ix should access Hindsight while moby is off: a supported local
-  deployment within ix's resource limits, or a separately available server.
-- [ ] If relocating Hindsight, use its supported backup/restore procedure and
-  verify queries/retention. Never synchronize a live database with Syncthing.
-- [ ] Migrate Elfeed to ix so RSS state remains available when moby is off.
-  Inventory current feeds, unread/read state, update timers, and any private
-  feed credentials before moving state; verify terminal Emacs access and backup
-  the Elfeed database before changing the authoritative host.
+- [x] Decide how ix should access Hindsight while moby is off: ix now owns the
+  REST API, restored database path, token file, backup unit, and Pi client URL.
+  The API is gated until a dedicated `~/.local/state/hindsight-codex/auth.json`
+  exists because the upstream local embedding stack crashes on the Pi 4 CPU.
+- [ ] Finish Hindsight activation after the dedicated Codex login, then verify
+  recall queries, restore-test the first ix archive, and only then revisit
+  retention/extraction workers. Never synchronize a live database with
+  Syncthing.
+- [x] Migrate Elfeed to ix so RSS state remains available when moby is off.
+  ix has the copied database, 779 configured feeds after opening Elfeed, and a
+  pre-copy backup under `~/.local/state/ix-migration/backups/`.
 
 ## Network and relay services
 
-- [ ] Move pi-msg relay duties from moby to ix, including secrets, account
-  registration policy, service health checks, and rollback to the current relay
+- [x] Move pi-msg relay configuration from moby to ix: ix has its own encrypted
+  config, Tailscale-only ejabberd module, account-registration helper, and a
+  marker-gated user service so it does not churn before accounts exist.
+- [ ] Complete pi-msg owner account registration on ix, verify phone and bot
+  login against `ix.tail5e510f.ts.net`, then keep the moby secret as rollback
   until ix is verified as the stable endpoint.
 - [ ] Add Pi-hole capabilities on ix for private tailnet DNS/ad blocking.
   Plan upstream DNS, Tailscale/DHCP integration, persistence, allow/deny-list
