@@ -45,6 +45,9 @@
     ../common/us_eng.nix
   ];
 
+  # Build aarch64 Raspberry Pi images on this x86_64 host.
+  boot.binfmt.emulatedSystems = [ "aarch64-linux" ];
+
   # FHS
   programs.nix-ld.enable = true;
 

@@ -1,0 +1,18 @@
+{
+  "defaultProvider": "openai-codex",
+  "defaultModel": "gpt-6-astra",
+  "defaultThinkingLevel": "xhigh",
+  "enabledModels": [
+    "openai-codex/gpt-6-astra",
+    "openai-codex/gpt-5.5"
+  ],
+  "theme": "dark",
+  "hideThinkingBlock": false,
+  "defaultProjectTrust": "ask",
+  "enableInstallTelemetry": false,
+  "enableAnalytics": false,
+  "externalEditor": "emacsclient -t -a emacs",
+  "packages": [],
+  "extensions": [],
+  "lastChangelogVersion": "0.85.1"
+}

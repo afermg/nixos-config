@@ -164,11 +164,17 @@
       formatter = {
         aarch64-darwin = nixpkgs.legacyPackages.aarch64-darwin.nixfmt-rfc-style;
         x86_64-linux = nixpkgs.legacyPackages.x86_64-linux.nixfmt-rfc-style;
+        aarch64-linux = nixpkgs.legacyPackages.aarch64-linux.nixfmt-rfc-style;
       };
 
       # NixOS configuration entrypoint
       # Available through 'nixos-rebuild --flake .#your-hostname'
       nixosConfigurations = {
+        ix = lib.nixosSystem {
+          modules = [ ./machines/ix ];
+          specialArgs = { inherit inputs; };
+        };
+
         moby = lib.nixosSystem {
           modules = [
             ./machines/moby

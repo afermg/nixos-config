@@ -1,0 +1,119 @@
+# Normal account policies, enabled only after a complete checksum-verified seed
+# and a non-mutating cutover preview. Keep the copied per-folder UID state.
+IMAPAccount quasimorphic
+Host witcher.mxrouting.net
+Port 993
+User alan@quasimorphic.com
+PassCmd "@QUASIMORPHIC_PASSWORD@"
+TLSType IMAPS
+CertificateFile /etc/ssl/certs/ca-certificates.crt
+
+IMAPStore quasimorphic-remote
+Account quasimorphic
+
+MaildirStore quasimorphic-local
+SubFolders Verbatim
+Path ~/.mail/quasimorphic/
+Inbox ~/.mail/quasimorphic/Inbox
+
+Channel quasimorphic
+Far :quasimorphic-remote:
+Near :quasimorphic-local:
+Patterns * !INBOX/*
+Sync All
+Create Both
+Expunge Both
+Remove None
+SyncState *
+
+Channel quasimorphic-archives
+Far :quasimorphic-remote:
+Near :quasimorphic-local:
+Patterns INBOX/*
+Sync All
+Create Both
+Expunge Both
+Remove None
+SyncState *
+
+IMAPAccount broad
+Host imap.gmail.com
+Port 993
+User amunozgo@broadinstitute.org
+PassCmd "@BROAD_PASSWORD@"
+TLSType IMAPS
+CertificateFile /etc/ssl/certs/ca-certificates.crt
+AuthMechs LOGIN
+
+IMAPStore broad-remote
+Account broad
+
+MaildirStore broad-local
+SubFolders Verbatim
+Path ~/.mail/broad/
+Inbox ~/.mail/broad/Inbox
+
+Channel broad
+Far :broad-remote:
+Near :broad-local:
+Patterns * !"[Gmail]/All Mail"
+Sync All
+Create Both
+Expunge Both
+Remove None
+SyncState *
+
+MaildirStore broad-archive-local
+SubFolders Verbatim
+Path ~/.cache/mirror-mail/broad/
+Inbox ~/.cache/mirror-mail/broad/Inbox
+
+Channel broad-all-mail
+Far :broad-remote:
+Near :broad-archive-local:
+Patterns "[Gmail]/All Mail"
+Sync Pull
+Create Near
+Expunge None
+Remove None
+SyncState *
+
+IMAPAccount purdue
+Host outlook.office365.com
+Port 993
+User amunozgo@purdue.edu
+PassCmd "@OAMA@ access amunozgo@purdue.edu"
+TLSType IMAPS
+CertificateFile /etc/ssl/certs/ca-certificates.crt
+AuthMechs XOAUTH2
+
+IMAPStore purdue-remote
+Account purdue
+
+MaildirStore purdue-local
+SubFolders Verbatim
+Path ~/.mail/purdue/
+Inbox ~/.mail/purdue/Inbox
+
+Channel purdue
+Far :purdue-remote:
+Near :purdue-local:
+Patterns * !"Sent Items" !Calendar !Calendar/* !Contacts !Journal !Notes !Outbox !Tasks
+Sync Pull
+Create Near
+Expunge Near
+Remove None
+CopyArrivalDate yes
+SyncState *
+
+# Upload locally sent messages; the rest of the university mailbox is pull-only.
+Channel purdue-sent
+Far :purdue-remote:
+Near :purdue-local:
+Patterns "Sent Items"
+Sync All
+Create Both
+Expunge Both
+Remove None
+CopyArrivalDate yes
+SyncState *
