@@ -273,9 +273,12 @@ sudo systemctl restart podman-hindsight-api.service
 ```
 
 `pi-msg` is configured for ix with a separate `pi-msg-ix.age` secret and
-Tailscale-only ejabberd on `ix.tail5e510f.ts.net`. The user service is skipped
-until the account-registration marker exists. After deployment and after choosing
-the phone account password, run:
+Tailscale-only ejabberd on `ix.tail5e510f.ts.net`. The moby and oppy client
+profiles also use ix-domain secrets, so their bots connect as `pi@ix...` and
+`pi-oppy@ix...` instead of using moby as the relay. The bot accounts have been
+registered on ix; the ix user service is still skipped until the human phone
+account password is chosen and the account-registration marker exists. After
+deployment and after choosing the phone account password, run:
 
 ```bash
 pi-msg-register-accounts

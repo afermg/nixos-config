@@ -28,7 +28,7 @@
     ./boot.nix
     # Moby's former Overleaf module is intentionally not imported. Its frozen
     # setup and the active Oppy/Karkinos links are in ./OVERLEAF_ARCHIVE.md.
-    ./ejabberd.nix
+    # The pi-msg XMPP relay moved to ix; keep ./ejabberd.nix as rollback only.
     ./marimohub-connector.nix
     ./hindsight.nix
     ./home-assistant.nix
@@ -310,9 +310,9 @@
 
     services.pi-msg = {
       enable = true;
-      domain = "moby.tail5e510f.ts.net";
-      secretFile = ../../secrets/pi-msg.age;
-      registerLocalAccounts = true;
+      domain = "ix.tail5e510f.ts.net";
+      secretFile = ../../secrets/pi-msg-moby-ix.age;
+      registrationSshHost = "ix.tail5e510f.ts.net";
     };
   };
 

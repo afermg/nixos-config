@@ -39,9 +39,13 @@ This roadmap applies **only to ix**. It is not a general nixos-config backlog.
 - [x] Move pi-msg relay configuration from moby to ix: ix has its own encrypted
   config, Tailscale-only ejabberd module, account-registration helper, and a
   marker-gated user service so it does not churn before accounts exist.
-- [ ] Complete pi-msg owner account registration on ix, verify phone and bot
-  login against `ix.tail5e510f.ts.net`, then keep the moby secret as rollback
-  until ix is verified as the stable endpoint.
+- [x] Route the moby and oppy pi-msg clients through ix. Their profiles now use
+  ix-domain secrets and `registrationSshHost = "ix.tail5e510f.ts.net"`; bot
+  accounts `pi@ix...` and `pi-oppy@ix...` are registered on ix.
+- [ ] Complete pi-msg owner account registration on ix, verify phone login and
+  end-to-end moby/oppy message delivery against `ix.tail5e510f.ts.net`, then
+  keep the old moby-domain secrets as rollback until ix is verified as the
+  stable endpoint.
 - [x] Add Pi-hole-like capabilities on ix for private tailnet DNS/ad blocking.
   Blocky listens on `100.114.49.10:53`, uses reviewed DoH upstreams and a
   tracked deny/allow policy, and has `/var/lib/blocky` covered by ix encrypted
