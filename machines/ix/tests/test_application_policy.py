@@ -109,10 +109,23 @@ class ApplicationPolicyTests(unittest.TestCase):
         text = (HOME / "syncthing.nix").read_text()
         for name in ("globalAnnounceEnabled", "localAnnounceEnabled", "relaysEnabled"):
             self.assertIn(f"{name} = false;", text)
-        self.assertEqual(text.count("paused = true;"), 2)
+        self.assertEqual(text.count("paused = true;"), 3)
         self.assertIn('guiAddress = "127.0.0.1:8384";', text)
         self.assertIn('/.pi/agent/sessions"', text)
+        self.assertIn('id = "ix-backups";', text)
+        self.assertIn('type = "sendonly";', text)
         self.assertNotIn('/.pi/agent"', text)
+
+    def test_ix_state_backups_are_encrypted_and_not_live_database_sync(self):
+        text = (ROOT / "machines/ix/backups.nix").read_text()
+        self.assertIn("ix-state-backup.service", text)
+        self.assertIn("systemd.timers.ix-state-backup", text)
+        self.assertIn(".local/share/syncthing/ix-backups/ix", text)
+        self.assertIn("age -d -i /etc/ssh/ssh_host_ed25519_key", text)
+        self.assertIn("home/amunoz/.pi/agent/sessions", text)
+        self.assertIn("home/amunoz/.elfeed", text)
+        self.assertIn("home/amunoz/.local/state/syncthing/key.pem", text)
+        self.assertNotIn("/var/lib/hindsight/pg0", text)
 
     def test_home_assistant_is_minimal_with_explicit_roborock_dependencies(self):
         text = (ROOT / "machines/ix/services.nix").read_text()

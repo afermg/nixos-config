@@ -63,6 +63,15 @@ in
           ignorePerms = true;
           ignorePatterns = [ ".rsync-partial" ];
         };
+        ix-backups = {
+          id = "ix-backups";
+          label = "ix encrypted backups";
+          path = "${config.home.homeDirectory}/.local/share/syncthing/ix-backups";
+          devices = peers;
+          paused = true;
+          type = "sendonly";
+          ignorePerms = true;
+        };
       };
     };
   };
