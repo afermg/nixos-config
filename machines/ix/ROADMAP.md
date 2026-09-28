@@ -50,9 +50,12 @@ This roadmap applies **only to ix**. It is not a general nixos-config backlog.
   Blocky listens on `100.114.49.10:53`, uses reviewed DoH upstreams and a
   tracked deny/allow policy, and has `/var/lib/blocky` covered by ix encrypted
   state backups.
-- [ ] Test Blocky from tailnet clients, then decide whether to set Tailscale DNS,
-  router DHCP DNS, or per-device DNS. Keep current resolvers as the bypass path
-  until client rollout is deliberately changed.
+- [x] Test Blocky from a tailnet client: oppy resolves normal domains through
+  `100.114.49.10`, blocks `doubleclick.net` to `0.0.0.0`, and still resolves
+  `tailscale.com`.
+- [ ] Decide whether to set Tailscale DNS, router DHCP DNS, or per-device DNS.
+  Keep current resolvers as the bypass path until client rollout is deliberately
+  changed.
 
 ## Mac synchronization
 
