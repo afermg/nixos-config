@@ -89,7 +89,7 @@
 
 (setq org-latex-default-class "extarticle")
 
-   (setq org-latex-prefer-user-labels t
+(setq org-latex-prefer-user-labels t
          org-latex-caption-above nil
          ;; org-latex-listings 'minted
          org-latex-listings nil
@@ -150,4 +150,3 @@
           ;; "makeindex %b"
           "latexmk -pdflatex='xelatex -interaction -shell-escape nonstopmode ' -shell-escape -pdf -f %f "
           "latexmk -pdflatex='xelatex -shell-escape -interaction nonstopmode ' -shell-escape -pdf -f %f "))
-
