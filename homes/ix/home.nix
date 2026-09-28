@@ -18,9 +18,19 @@
   };
   programs.git = {
     enable = true;
-    settings.user = {
-      name = "Alán F. Muñoz";
-      email = "afer.mg@gmail.com";
+    # Keep the private key in runtime state, outside Git and the Nix store.
+    # Register its .pub counterpart with GitHub as a signing key.
+    signing = {
+      format = "ssh";
+      key = "/home/amunoz/.ssh/id_ed25519_github_ix";
+      signByDefault = true;
+    };
+    settings = {
+      tag.gpgsign = true;
+      user = {
+        name = "Alán F. Muñoz";
+        email = "afer.mg@gmail.com";
+      };
     };
   };
   xdg.enable = true;
