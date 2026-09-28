@@ -39,6 +39,21 @@ class MirrorMailTest(unittest.TestCase):
         for config in mirror_mail.MIRRORS.values():
             self.history.remember(config, set(), initialize=True)
 
+    def test_runtime_password_file_does_not_invoke_vault(self) -> None:
+        password = self.root / "password"
+        password.write_text("test-only-password\n")
+        with mock.patch.dict(mirror_mail.os.environ, {"MIRROR_MAIL_PASSWORD_FILE": str(password)}), mock.patch.object(mirror_mail.subprocess, "run") as run:
+            self.assertEqual(mirror_mail.get_password(), "test-only-password")
+            run.assert_not_called()
+
+    def test_empty_runtime_password_file_fails_closed(self) -> None:
+        password = self.root / "password"
+        password.write_text("")
+        with mock.patch.dict(mirror_mail.os.environ, {"MIRROR_MAIL_PASSWORD_FILE": str(password)}), mock.patch.object(mirror_mail.subprocess, "run") as run:
+            with self.assertRaises(RuntimeError):
+                mirror_mail.get_password()
+            run.assert_not_called()
+
     def test_message_id_preserves_case(self) -> None:
         self.assertEqual(
             mirror_mail.normalize_message_id(" <Case-Sensitive@Example.COM> "),
