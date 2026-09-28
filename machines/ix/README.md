@@ -285,6 +285,19 @@ systemctl --user status pi-msg.service
 Keep the moby relay secret as rollback until phone and bot logins are verified
 against ix.
 
+`ix-state-backup.timer` creates weekly encrypted archives under
+`~/.local/share/syncthing/ix-backups/ix/`. These archives cover ix-owned Pi
+sessions, Elfeed state, selected private Syncthing documents, Hindsight encrypted
+backup archives, Syncthing identity/config, and `Documents/broad/org`; they do
+not include Hindsight's live database. The `ix-backups` Syncthing folder is
+paused/send-only until remote devices are explicitly reconciled and accepted.
+Run an immediate backup with:
+
+```bash
+ix-state-backup-now
+journalctl -u ix-state-backup.service
+```
+
 ## Foundation defaults and migration boundary
 
 - Two Nix build jobs/cores; 25% RAM zram; no physical swap or HDD TRIM.

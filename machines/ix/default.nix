@@ -4,6 +4,7 @@
   imports = [
     inputs.home-manager.nixosModules.home-manager
     ../../modules/nixos/arm-emulation.nix
+    ./backups.nix
     ./hardware.nix
     ./direct-boot.nix
     ./ejabberd.nix

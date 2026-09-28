@@ -10,8 +10,12 @@ This roadmap applies **only to ix**. It is not a general nixos-config backlog.
 - [ ] If ZFS is chosen, plan a backed-up, verified migration/reinstallation.
   There is no in-place ext4-to-ZFS conversion. Do not format the only working
   copy, discard Pi OS recovery, or enable unsupported HDD discard/autotrim.
-- [ ] Add and restore-test independent backups for ix's data and private state.
-  Syncthing working copies are not backups.
+- [x] Add independent encrypted backups for ix's selected data and private
+  state. `ix-state-backup.timer` writes verified archives under
+  `~/.local/share/syncthing/ix-backups/ix`; Syncthing working copies remain
+  non-backups.
+- [ ] Restore-test the first `ix-state-*.tar.zst.age` archive on a scratch path
+  and confirm the selected contents are sufficient for recovery.
 - [ ] Revisit the Samsung NVMe/enclosure zero-capacity issue before considering
   it as alternative storage for ix; do not assume either component is healthy.
 
