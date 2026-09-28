@@ -22,6 +22,15 @@ This roadmap applies **only to ix**. It is not a general nixos-config backlog.
 - [ ] If relocating Hindsight, use its supported backup/restore procedure and
   verify queries/retention. Never synchronize a live database with Syncthing.
 
+## Network and relay services
+
+- [ ] Move pi-msg relay duties from moby to ix, including secrets, account
+  registration policy, service health checks, and rollback to the current relay
+  until ix is verified as the stable endpoint.
+- [ ] Add Pi-hole capabilities on ix for private tailnet DNS/ad blocking.
+  Plan upstream DNS, Tailscale/DHCP integration, persistence, allow/deny-list
+  backups, and a bypass/rollback path before changing clients.
+
 ## Mac synchronization
 
 - [ ] Pair ix with the intended Macs, reconcile Documents and Pi sessions, then
