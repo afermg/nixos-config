@@ -72,6 +72,7 @@ in
       add_source home/amunoz/.local/share/syncthing/hindsight-backups
       add_source home/amunoz/Documents/broad/org
       add_source var/lib/blocky
+      add_source var/lib/private/blocky
 
       tar \
         --create \

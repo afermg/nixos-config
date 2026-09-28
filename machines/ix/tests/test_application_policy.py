@@ -126,6 +126,7 @@ class ApplicationPolicyTests(unittest.TestCase):
         self.assertIn("home/amunoz/.elfeed", text)
         self.assertIn("home/amunoz/.local/state/syncthing/key.pem", text)
         self.assertIn("var/lib/blocky", text)
+        self.assertIn("var/lib/private/blocky", text)
         self.assertNotIn("/var/lib/hindsight/pg0", text)
 
     def test_dns_blocking_is_tailnet_only_and_not_client_cutover(self):
