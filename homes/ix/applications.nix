@@ -71,6 +71,8 @@
       TimeoutStartSec = "5min";
     };
   };
+  home.file.".emacs.d/early-init.el".source =
+    config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/.local/share/src/nixos-config/homes/ix/emacs-early-init.el";
   home.file.".emacs.d/init.el".source =
     config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/.local/share/src/nixos-config/homes/ix/emacs.el";
   home.file.".pi/agent/settings.json".source =
