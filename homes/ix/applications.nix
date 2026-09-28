@@ -62,6 +62,15 @@
       ))
     ];
   };
+  # Pin the skill in the Nix store; Pi discovers this directory automatically.
+  home.file.".pi/agent/skills/emacs-pair".source = "${
+    pkgs.fetchFromGitHub {
+      owner = "afermg";
+      repo = "emacs-pair";
+      rev = "c06fbe7b1437f49b7d5d06e5fe4d87af0b9df281";
+      hash = "sha256-kOBVPtRzDHzVm+Rk0Mn+FUFoCD++Us6ocYxrUmDgcVk=";
+    }
+  }/skills/emacs-pair";
   home.file.".pi/agent/settings.json".source =
     config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/.local/share/src/nixos-config/homes/ix/pi-settings.json";
 }
