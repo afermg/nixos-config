@@ -125,7 +125,22 @@ class ApplicationPolicyTests(unittest.TestCase):
         self.assertIn("home/amunoz/.pi/agent/sessions", text)
         self.assertIn("home/amunoz/.elfeed", text)
         self.assertIn("home/amunoz/.local/state/syncthing/key.pem", text)
+        self.assertIn("var/lib/blocky", text)
         self.assertNotIn("/var/lib/hindsight/pg0", text)
+
+    def test_dns_blocking_is_tailnet_only_and_not_client_cutover(self):
+        text = (ROOT / "machines/ix/dns.nix").read_text()
+        self.assertIn("services.blocky", text)
+        self.assertIn('dns = "100.114.49.10:53";', text)
+        self.assertIn('http = "127.0.0.1:4000";', text)
+        self.assertIn("https://dns.quad9.net/dns-query", text)
+        self.assertIn("https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts", text)
+        self.assertIn("tail5e510f.ts.net", text)
+        self.assertIn("allowedTCPPorts = [ 53 ];", text)
+        self.assertIn("allowedUDPPorts = [ 53 ];", text)
+        self.assertNotIn("0.0.0.0:53", text)
+        host = (ROOT / "machines/ix/default.nix").read_text()
+        self.assertIn("./dns.nix", host)
 
     def test_home_assistant_is_minimal_with_explicit_roborock_dependencies(self):
         text = (ROOT / "machines/ix/services.nix").read_text()
