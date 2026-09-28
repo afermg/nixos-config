@@ -102,7 +102,6 @@
  ("org-cliplink" . "13e0940b65d22bec34e2de4bc8cba1412a7abfbc")
  ("org-contrib" . "82f94c5612c20286d234613f0ce0d92eac2c0845")
  ("org-download" . "c8be2611786d1d8d666b7b4f73582de1093f25ac")
- ("org-gcal.el" . "7304b592c283944db54ac83201d7be6f13a1f447")
  ("org-modern" . "8775389d085a4ebdf77856b8f86ab4d9679fc55e")
  ("org-remark" . "10a2bc3f60b020fb3bc8c0194ac1bf1145432e97")
  ("org-roam" . "903bd4ec56d29247990d005ed9052c201e18b812")
