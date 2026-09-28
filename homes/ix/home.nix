@@ -1,8 +1,14 @@
 # Intentionally independent from homeModules.amunoz and the desktop profile.
 # Applications were added only after normal boot, recovery, and rollback passed.
-{ ... }:
+{ inputs, ... }:
 {
-  imports = [ ./applications.nix ];
+  _module.args.piMsgInputs = inputs;
+
+  imports = [
+    inputs.agenix.homeManagerModules.default
+    ../../modules/shared/config/pi-msg/pi-msg.nix
+    ./applications.nix
+  ];
   home = {
     username = "amunoz";
     homeDirectory = "/home/amunoz";
@@ -18,10 +24,30 @@
   };
   programs.git = {
     enable = true;
-    settings.user = {
-      name = "Alán F. Muñoz";
-      email = "afer.mg@gmail.com";
+    # Keep the private key in runtime state, outside Git and the Nix store.
+    # Register its .pub counterpart with GitHub as a signing key.
+    signing = {
+      format = "ssh";
+      key = "/home/amunoz/.ssh/id_ed25519_github_ix";
+      signByDefault = true;
+    };
+    settings = {
+      tag.gpgsign = true;
+      user = {
+        name = "Alán F. Muñoz";
+        email = "afer.mg@gmail.com";
+      };
     };
   };
   xdg.enable = true;
+
+  age.identityPaths = [ "/home/amunoz/.ssh/id_ed25519_github_ix" ];
+
+  services.pi-msg = {
+    enable = true;
+    domain = "ix.tail5e510f.ts.net";
+    secretFile = ../../secrets/pi-msg-ix.age;
+    registerLocalAccounts = true;
+    requireAccountsReadyMarker = true;
+  };
 }

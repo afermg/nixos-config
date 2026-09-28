@@ -5,11 +5,14 @@
     ./mail.nix
     ./syncthing.nix
     ./editor-tools.nix
+    ./hindsight.nix
+    ../../modules/shared/config/emacs/emacs-service.nix
     ../../modules/shared/config/fish/fish.nix
   ];
 
   home.packages = with pkgs; [
     pi-coding-agent
+    codex
     ripgrep
     fd
     jq
@@ -29,9 +32,15 @@
     settings.prefix = "${config.home.homeDirectory}/.local";
   };
 
-  programs.emacs = {
+  afm.emacsService = {
     enable = true;
     package = pkgs.emacs-nox;
+    clientEnable = false;
+    timeoutStartSec = "5min";
+    startLimitIntervalSec = 60;
+    startLimitBurst = 3;
+    earlyInitFile = "${config.home.homeDirectory}/.local/share/src/nixos-config/homes/ix/emacs-early-init.el";
+    initFile = "${config.home.homeDirectory}/.local/share/src/nixos-config/homes/ix/emacs.el";
     # Keep mu4e native/matched. Shared Lisp packages remain managed by Straight.
     extraPackages = epkgs: [
       epkgs.mu4e
@@ -55,20 +64,15 @@
       ))
     ];
   };
-  services.emacs = {
-    enable = true;
-    startWithUserSession = true;
-    client.enable = false;
-  };
-  systemd.user.services.emacs = {
-    Unit = {
-      StartLimitIntervalSec = 60;
-      StartLimitBurst = 3;
-    };
-    Service.RestartSec = 5;
-  };
-  home.file.".emacs.d/init.el".source =
-    config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/.local/share/src/nixos-config/homes/ix/emacs.el";
+  # Pin the skill in the Nix store; Pi discovers this directory automatically.
+  home.file.".pi/agent/skills/emacs-pair".source = "${
+    pkgs.fetchFromGitHub {
+      owner = "afermg";
+      repo = "emacs-pair";
+      rev = "c06fbe7b1437f49b7d5d06e5fe4d87af0b9df281";
+      hash = "sha256-kOBVPtRzDHzVm+Rk0Mn+FUFoCD++Us6ocYxrUmDgcVk=";
+    }
+  }/skills/emacs-pair";
   home.file.".pi/agent/settings.json".source =
     config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/.local/share/src/nixos-config/homes/ix/pi-settings.json";
 }

@@ -3,8 +3,13 @@
 {
   imports = [
     inputs.home-manager.nixosModules.home-manager
+    ../../modules/nixos/arm-emulation.nix
+    ./backups.nix
     ./hardware.nix
     ./direct-boot.nix
+    ./dns.nix
+    ./ejabberd.nix
+    ./hindsight.nix
     ./services.nix
   ];
 
@@ -42,6 +47,7 @@
   home-manager = {
     useGlobalPkgs = true;
     useUserPackages = true;
+    extraSpecialArgs = { inherit inputs; };
     backupFileExtension = "ix-before-hm";
     users.amunoz = import ../../homes/ix/home.nix;
   };
@@ -52,10 +58,13 @@
     tmux
     curl
     htop
+    btop
     pciutils
     usbutils
     python3
   ];
+  nix.armEmulation.enable = true;
+
   nix.settings = {
     experimental-features = [
       "nix-command"

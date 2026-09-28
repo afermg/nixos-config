@@ -185,25 +185,139 @@ credentials; no `gh auth setup-git` is needed. The Git config is Nix-managed and
 read-only, while GitHub login credentials remain in private runtime state, never
 in the repository or Nix store. Run Git commands from the repository directory.
 
-For web UIs, use the pinned alias above:
+For Home Assistant, use the pinned alias above on the browser's computer:
 
 ```sh
-ssh -N -L 127.0.0.1:18123:127.0.0.1:8123 -L 127.0.0.1:18384:127.0.0.1:8384 ix
+ssh -NT -o ExitOnForwardFailure=yes \
+  -o ServerAliveInterval=30 -o ServerAliveCountMax=3 \
+  -L 127.0.0.1:8123:127.0.0.1:8123 ix
 ```
 
-Open `http://127.0.0.1:18123/onboarding.html` for the **fresh** Home Assistant
-setup, or `http://127.0.0.1:18384` for Syncthing. These are loopback services,
-not LAN listeners. HA has no imported accounts/device state; configure desired
-integrations later and add their Nix dependencies explicitly. HA 2026.9 owns
-accepted HTTP settings in `.storage/http`; YAML is only the initial migration
-input, so verify the actual listener after changing settings.
+Open `http://127.0.0.1:8123/` (both ends now use Home Assistant's default port).
+The older local port `18123` is no longer needed. Keep the command running;
+`-f` backgrounds SSH but does not automatically reconnect it after a disconnect.
+Test from the browser's computer with
+`curl -fLsS --max-time 10 -o /dev/null -w 'HTTP %{http_code}\n' http://127.0.0.1:8123/`.
+If SSH reports an occupied port, inspect the listener before stopping anything;
+an existing SSH process may also carry unrelated forwards.
+
+For Syncthing, optionally run a separate tunnel in another terminal:
+
+```sh
+ssh -NT -o ExitOnForwardFailure=yes -L 127.0.0.1:18384:127.0.0.1:8384 ix
+```
+
+Open `http://127.0.0.1:18384` for Syncthing. Syncthing and HA's backend remain
+loopback-only; HA additionally has the narrowly scoped LAN endpoint below.
+HA has no imported accounts/device state; configure desired integrations in
+its UI and add their Nix dependencies explicitly (`met` and `roborock` are
+included). HA 2026.9 owns accepted HTTP settings in `.storage/http`; YAML is
+only the initial migration input, so verify the actual listener after changing
+settings.
+
+### Home Assistant phone / home-LAN access
+
+Enter `http://<ix-LAN-IPv4>:8124` manually in the official Home Assistant app.
+The current DHCP address is `192.168.1.162`, hence
+`http://192.168.1.162:8124`. This is not a static lease: check `ip -4 addr show
+end0` if it changes, or reserve its existing Ethernet MAC in the home router.
+Automatic discovery remains disabled; allow the phone app local-network access
+and use the regular home Wi-Fi, not an isolated guest network. The official
+companion app requires `services.home-assistant.config.mobile_app = { };`,
+which is explicitly enabled without `default_config`. Nix infers its Python
+dependencies from that configuration key; successful startup exposes the
+login-protected `/api/mobile_app/registrations` endpoint.
+
+`home-assistant-lan.socket` binds IPv4 port 8124 specifically to `end0`, not
+loopback, IPv6, or Tailscale. Its sandboxed `systemd-socket-proxyd` forwards HTTP
+and WebSockets to the unchanged `127.0.0.1:8123` backend. The firewall permits
+only IPv4 sources **and destinations** in `192.168.1.0/24` arriving on `end0`;
+this is not a global allowed-port rule or a trusted-interface exemption.
+Changing home subnets requires reviewing the explicit firewall rule in
+`machines/ix/services.nix`. The Mac tunnel remains unchanged.
+
+This endpoint is **HTTP, not HTTPS**: use only on trusted home LAN/Wi-Fi, retain
+HA authentication (prefer MFA), and never port-forward it from the Internet.
+For encrypted remote access, use a separately reviewed HTTPS/VPN endpoint.
+Raw TCP forwarding means HA sees LAN clients as loopback: do not configure a
+`trusted_networks` login bypass for loopback, and note that IP bans cannot
+distinguish clients behind this endpoint.
+
+The Nix configuration enables the socket and firewall rule on a normal
+deployment. A service-only trial using units under `/run/systemd/system` and
+an inserted firewall rule is temporary: reboot removes the runtime units/rule,
+and reloading the old firewall configuration removes the trial rule. When a
+reviewed normal deployment includes this configuration, remove trial unit
+links (not the declarative `/etc` units), reload systemd, and ensure the socket
+is active. See `~/.local/state/home-assistant/lan-activation.md` on ix for the
+current trial's exact locations, verification, and rollback instructions.
 
 Syncthing's Documents and Pi-session shares are intentionally paused pending
 later Mac/tailnet reconciliation. That work was explicitly removed from the
 migration completion gate. Do not enable discovery/relays or clone a Tailscale
 identity to bypass enrollment. Peer addresses use Tailscale DNS names, not fixed
 IPs. The device ID was emailed privately, not published here; the debrief lists
-the local GUI-password location. Hindsight was not moved.
+the local GUI-password location.
+
+## Reader and relay services
+
+Hindsight runtime state now lives on ix, with the Pi client pointed at
+`http://127.0.0.1:8888` locally and `http://ix.tail5e510f.ts.net:8888` over the
+tailnet. The service is intentionally skipped until a dedicated Codex OAuth file
+exists at `~/.local/state/hindsight-codex/auth.json`; create it with:
+
+```bash
+install -d -m 0700 ~/.local/state/hindsight-codex
+CODEX_HOME=~/.local/state/hindsight-codex codex login --device-auth
+sudo systemctl restart podman-hindsight-api.service
+```
+
+`pi-msg` is configured for ix with a separate `pi-msg-ix.age` secret and
+Tailscale-only ejabberd on `ix.tail5e510f.ts.net`. The moby and oppy client
+profiles also use ix-domain secrets, so their bots connect as `pi@ix...` and
+`pi-oppy@ix...` instead of using moby as the relay. The bot accounts have been
+registered on ix; the ix user service is still skipped until the human phone
+account password is chosen and the account-registration marker exists. After
+deployment and after choosing the phone account password, run:
+
+```bash
+pi-msg-register-accounts
+systemctl --user status pi-msg.service
+```
+
+Keep the moby relay secret as rollback until phone and bot logins are verified
+against ix.
+
+`ix-state-backup.timer` creates weekly encrypted archives under
+`~/.local/share/syncthing/ix-backups/ix/`. These archives cover ix-owned Pi
+sessions, Elfeed state, selected private Syncthing documents, Hindsight encrypted
+backup archives, Syncthing identity/config, and `Documents/broad/org`; they do
+not include Hindsight's live database. The `ix-backups` Syncthing folder is
+paused/send-only until remote devices are explicitly reconciled and accepted.
+Run an immediate backup with:
+
+```bash
+ix-state-backup-now
+journalctl -u ix-state-backup.service
+```
+
+## DNS blocking
+
+ix provides Pi-hole-like DNS blocking through Blocky on its Tailscale IPv4 only:
+`100.114.49.10:53`. The HTTP status endpoint stays on `127.0.0.1:4000`.
+Upstreams are Quad9 and Cloudflare DNS-over-HTTPS, and the initial denylist is
+StevenBlack's hosts list with Tailscale domains allowlisted. No DHCP, router, or
+Tailscale DNS setting points clients at ix yet, so rollback is immediate: keep
+clients on their current resolvers or remove the client-side DNS setting being
+tested. Blocky state under `/var/lib/blocky` is included in ix encrypted state
+backups.
+
+Test from a tailnet client before any rollout:
+
+```bash
+dig @100.114.49.10 example.com
+dig @100.114.49.10 doubleclick.net
+```
 
 ## Foundation defaults and migration boundary
 

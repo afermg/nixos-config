@@ -49,7 +49,22 @@ nix --extra-experimental-features 'nix-command flakes' build .#darwinConfigurati
 
 Swap =darwin001= for =darwin002= on the other Mac.
 
+** Build ARM Linux targets
+The Linux host imports =outputs.nixosModules."arm-emulation"= to register QEMU binfmt handlers and advertise ARM Linux systems to Nix through =extra-platforms=. Once activated, the host can realize supported derivations locally for those target systems.
 
+#+begin_src bash
+nix build 'nixpkgs#legacyPackages.aarch64-linux.hello'
+nix build 'nixpkgs#legacyPackages.armv7l-linux.hello'
+#+end_src
+
+Other NixOS hosts can reuse the layer with:
+
+#+begin_src nix
+{
+  imports = [ outputs.nixosModules."arm-emulation" ];
+  nix.armEmulation.enable = true;
+}
+#+end_src
 
 * Where should I add packages?
 Relative to the root folder of the repo.

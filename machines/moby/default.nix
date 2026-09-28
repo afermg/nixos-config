@@ -14,6 +14,7 @@
     # If you want to use modules from other flakes (such as nixos-hardware):
     # inputs.hardware.nixosModules.common-pc-ssd
     inputs.home-manager.nixosModules.home-manager
+    outputs.nixosModules."arm-emulation"
 
     # Import your generated (nixos-generate-config) hardware configuration
     # Disko configuration
@@ -27,7 +28,7 @@
     ./boot.nix
     # Moby's former Overleaf module is intentionally not imported. Its frozen
     # setup and the active Oppy/Karkinos links are in ./OVERLEAF_ARCHIVE.md.
-    ./ejabberd.nix
+    # The pi-msg XMPP relay moved to ix; keep ./ejabberd.nix as rollback only.
     ./marimohub-connector.nix
     ./hindsight.nix
     ./home-assistant.nix
@@ -148,6 +149,11 @@
     name = "nix/path/${name}";
     value.source = value.flake;
   }) config.nix.registry;
+
+  nix.armEmulation = {
+    enable = true;
+    systems = [ "armv7l-linux" ];
+  };
 
   nix.settings = {
     # Enable flakes and new 'nix' command
@@ -304,9 +310,9 @@
 
     services.pi-msg = {
       enable = true;
-      domain = "moby.tail5e510f.ts.net";
-      secretFile = ../../secrets/pi-msg.age;
-      registerLocalAccounts = true;
+      domain = "ix.tail5e510f.ts.net";
+      secretFile = ../../secrets/pi-msg-moby-ix.age;
+      registrationSshHost = "ix.tail5e510f.ts.net";
     };
   };
 

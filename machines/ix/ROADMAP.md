@@ -10,17 +10,52 @@ This roadmap applies **only to ix**. It is not a general nixos-config backlog.
 - [ ] If ZFS is chosen, plan a backed-up, verified migration/reinstallation.
   There is no in-place ext4-to-ZFS conversion. Do not format the only working
   copy, discard Pi OS recovery, or enable unsupported HDD discard/autotrim.
-- [ ] Add and restore-test independent backups for ix's data and private state.
-  Syncthing working copies are not backups.
+- [x] Add independent encrypted backups for ix's selected data and private
+  state. `ix-state-backup.timer` writes verified archives under
+  `~/.local/share/syncthing/ix-backups/ix`; Syncthing working copies remain
+  non-backups.
+- [x] Restore-test the first `ix-state-*.tar.zst.age` archive enough to verify
+  checksum, host-key decryption, tar listing, and representative Pi/Elfeed/org
+  and Syncthing identity paths.
 - [ ] Revisit the Samsung NVMe/enclosure zero-capacity issue before considering
   it as alternative storage for ix; do not assume either component is healthy.
 
-## Memory service
+## Memory and reader services
 
-- [ ] Decide how ix should access Hindsight while moby is off: a supported local
-  deployment within ix's resource limits, or a separately available server.
-- [ ] If relocating Hindsight, use its supported backup/restore procedure and
-  verify queries/retention. Never synchronize a live database with Syncthing.
+- [x] Decide how ix should access Hindsight while moby is off: ix now owns the
+  REST API, restored database path, token file, backup unit, and Pi client URL.
+  The API is gated until a dedicated `~/.local/state/hindsight-codex/auth.json`
+  exists because the upstream local embedding stack crashes on the Pi 4 CPU.
+- [ ] Finish Hindsight activation after the dedicated Codex login, then verify
+  recall queries, restore-test the first ix archive, and only then revisit
+  retention/extraction workers. Never synchronize a live database with
+  Syncthing.
+- [x] Migrate Elfeed to ix so RSS state remains available when moby is off.
+  ix has the copied database, 779 configured feeds after opening Elfeed, and a
+  pre-copy backup under `~/.local/state/ix-migration/backups/`.
+
+## Network and relay services
+
+- [x] Move pi-msg relay configuration from moby to ix: ix has its own encrypted
+  config, Tailscale-only ejabberd module, account-registration helper, and a
+  marker-gated user service so it does not churn before accounts exist.
+- [x] Route the moby and oppy pi-msg clients through ix. Their profiles now use
+  ix-domain secrets and `registrationSshHost = "ix.tail5e510f.ts.net"`; bot
+  accounts `pi@ix...` and `pi-oppy@ix...` are registered on ix.
+- [ ] Complete pi-msg owner account registration on ix, verify phone login and
+  end-to-end moby/oppy message delivery against `ix.tail5e510f.ts.net`, then
+  keep the old moby-domain secrets as rollback until ix is verified as the
+  stable endpoint.
+- [x] Add Pi-hole-like capabilities on ix for private tailnet DNS/ad blocking.
+  Blocky listens on `100.114.49.10:53`, uses reviewed DoH upstreams and a
+  tracked deny/allow policy, and has `/var/lib/blocky` covered by ix encrypted
+  state backups.
+- [x] Test Blocky from a tailnet client: oppy resolves normal domains through
+  `100.114.49.10`, blocks `doubleclick.net` to `0.0.0.0`, and still resolves
+  `tailscale.com`.
+- [ ] Decide whether to set Tailscale DNS, router DHCP DNS, or per-device DNS.
+  Keep current resolvers as the bypass path until client rollout is deliberately
+  changed.
 
 ## Mac synchronization
 
