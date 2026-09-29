@@ -1,10 +1,12 @@
 {
   config,
   lib,
+  pkgs,
   ...
 }:
 let
   cfg = config.nix.armEmulation;
+  hostSystem = pkgs.stdenv.hostPlatform.system;
 in
 {
   options.nix.armEmulation = {
@@ -12,10 +14,13 @@ in
 
     systems = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = [
-        "aarch64-linux"
-        "armv7l-linux"
-      ];
+      default =
+        lib.optionals (hostSystem != "aarch64-linux") [
+          "aarch64-linux"
+        ]
+        ++ [
+          "armv7l-linux"
+        ];
       description = ''
         Linux system types that Nix may build locally through binfmt emulation.
       '';

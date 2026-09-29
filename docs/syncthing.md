@@ -62,6 +62,13 @@ Folder and device definitions are declarative. Make lasting changes in:
 
 - `modules/shared/config/syncthing/sync.nix` for `moby`
 - `modules/shared/config/syncthing/receiver.nix` for receiving hosts
+- `homes/ix/syncthing.nix` for ix's paused migration folders and encrypted
+  backup archive folder
+
+On ix, `documents` and `pi-sessions` are paused receive-only working copies.
+`ix-backups` is also paused, but send-only: it is intended for encrypted
+`ix-state-*.tar.zst.age` archives created by `ix-state-backup.timer`, not for
+live databases or credential directories.
 
 Do not rely on changes made only in the web interface. In particular,
 `overrideFolders = true` and `overrideDevices = true` on `moby` cause the Nix

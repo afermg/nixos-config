@@ -139,10 +139,7 @@
           outputs.homeModules.pi-msg
         ];
 
-        hindsightBackupSyncthing = {
-          enable = true;
-          address = "100.79.40.39";
-        };
+        hindsightBackupSyncthing.enable = true;
 
         # Decrypt the existing Overleaf git-bridge credentials with
         # ~/.ssh/id_ed25519 when this Home Manager profile activates.
@@ -155,10 +152,10 @@
 
         services.pi-msg = {
           enable = true;
-          domain = "moby.tail5e510f.ts.net";
+          domain = "ix.tail5e510f.ts.net";
           botUsername = "pi-oppy";
-          secretFile = ./secrets/pi-msg-oppy.age;
-          registrationSshHost = "moby.tail5e510f.ts.net";
+          secretFile = ./secrets/pi-msg-oppy-ix.age;
+          registrationSshHost = "ix.tail5e510f.ts.net";
         };
       };
 
@@ -167,11 +164,17 @@
       formatter = {
         aarch64-darwin = nixpkgs.legacyPackages.aarch64-darwin.nixfmt-rfc-style;
         x86_64-linux = nixpkgs.legacyPackages.x86_64-linux.nixfmt-rfc-style;
+        aarch64-linux = nixpkgs.legacyPackages.aarch64-linux.nixfmt-rfc-style;
       };
 
       # NixOS configuration entrypoint
       # Available through 'nixos-rebuild --flake .#your-hostname'
       nixosConfigurations = {
+        ix = lib.nixosSystem {
+          modules = [ ./machines/ix ];
+          specialArgs = { inherit inputs; };
+        };
+
         moby = lib.nixosSystem {
           modules = [
             ./machines/moby
@@ -236,9 +239,9 @@
               {
                 services.pi-msg = {
                   enable = true;
-                  domain = "moby.tail5e510f.ts.net";
-                  secretFile = ./secrets/pi-msg.age;
-                  registerLocalAccounts = true;
+                  domain = "ix.tail5e510f.ts.net";
+                  secretFile = ./secrets/pi-msg-moby-ix.age;
+                  registrationSshHost = "ix.tail5e510f.ts.net";
                 };
               }
             ];
@@ -255,12 +258,7 @@
             extraSpecialArgs = { inherit inputs outputs; };
             modules = [
               outputs.homeModules.amunoz
-              {
-                hindsightBackupSyncthing = {
-                  enable = true;
-                  address = "100.126.147.16";
-                };
-              }
+              { hindsightBackupSyncthing.enable = true; }
             ];
           };
 

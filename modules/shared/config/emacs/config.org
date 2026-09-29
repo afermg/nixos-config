@@ -1396,7 +1396,6 @@ Initialize org-agenda file and set some key bindings to create tasks.
 #+NAME::org-mode-agenda
 #+BEGIN_SRC emacs-lisp
   (setq org-agenda-files (list (concat org-directory "/notes.org")
-                                (concat org-directory "/gcal.org")
                                 (concat org-directory "/personal_notes.org")))
   (setq org-agenda-span 14)
 
@@ -1962,160 +1961,6 @@ org-roam-ui-update-on-save t
 org-roam-ui-open-on-start t))
 #+end_src
 
-#+begin_comment
-*** Org-gcal
-Two-way sync between Google Calendar and =~/Documents/broad/org/gcal.org=. The previous inline OAuth client stopped working after its Google Cloud project was deleted, so both the =client_id= and =client_secret= now load from local files instead: =~/.org-gcal-client-id= and =~/.org-gcal-client-secret=.
-
-Bootstrap after rotating credentials: create a new Google Cloud Desktop OAuth client with the Calendar API enabled, write its =client_id= and =client_secret= to those two files, then run =M-x afm/org-gcal-reset-auth=. Subsequent syncs happen silently on the 15-minute timer below.
-
-#+begin_src emacs-lisp
-  (use-package org-gcal
-    :straight (:host github :repo "kidd/org-gcal.el" :branch "master")
-    :defer 5
-    :config
-    (require 'subr-x)
-    ;; oauth2-auto persists tokens via `plstore', which encrypts the secret
-    ;; section with GPG. Pin the recipient so encryption is non-interactive
-    ;; (the key was generated with `gpg --batch ... --passphrase ""'), and
-    ;; force loopback pinentry so plstore-save never blocks waiting for a
-    ;; pinentry dialog that won't appear inside the daemon.
-    (setq epa-pinentry-mode 'loopback)
-    (with-eval-after-load 'plstore
-      (setq plstore-encrypt-to "amunozgo@broadinstitute.org"))
-
-    ;; Override oauth2-auto's manual-flow redirect port. Upstream hardcodes
-    ;; localhost:8080 in `oauth2-auto--browser-request-manually', which
-    ;; collides with local nginx. Pick a high port unlikely to clash.
-    (defvar afm/oauth2-auto-redirect-port 28080
-      "Localhost port used as OAuth2 redirect_uri by oauth2-auto's manual flow.")
-    (with-eval-after-load 'oauth2-auto
-      (require 'aio)
-      (aio-defun oauth2-auto--browser-request-manually
-          (provider url-key data-keys extra-alist &optional quiet)
-        "Manual-flow override: use `afm/oauth2-auto-redirect-port' instead
-of upstream's hardcoded localhost:8080. Mirror of upstream otherwise."
-        (let* ((redirect-uri (format "http://localhost:%d"
-                                     afm/oauth2-auto-redirect-port))
-               (redirect-uri-elt (cons 'redirect_uri redirect-uri))
-               (very-extra-alist (cons redirect-uri-elt extra-alist))
-               (provider-info (oauth2-auto--provider-info provider))
-               (data-alist (oauth2-auto--craft-request-alist
-                            provider-info data-keys very-extra-alist))
-               (data (oauth2-auto--urlify-request data-alist))
-               (url (cdr (assoc url-key provider-info)))
-               (auth-url (concat url "?" data)))
-          (unless quiet
-            (alert (format "Please visit this URL to authorize:\n%s\n\nAfter authorization, copy the 'code' parameter from the redirect URL and paste it below:"
-                           auth-url)
-                   :title "Emacs OAuth2 login"
-                   :category 'oauth2-auto))
-          (let ((code (read-string
-                       (format "Please visit this URL to authorize:\n%s\n\nAfter authorization, copy the code from the redirect URL and paste it here.\nEnter authorization code: "
-                               auth-url))))
-            (cons redirect-uri-elt
-                  (list (cons 'code code)
-                        (cons 'redirect_uri redirect-uri)
-                        (cons 'state (cdr (assoc 'state data-alist)))))))))
-
-    (defvar afm/org-gcal-client-id-file "~/.org-gcal-client-id"
-      "Path to the Google OAuth client_id used by org-gcal.")
-    (defvar afm/org-gcal-client-secret-file "~/.org-gcal-client-secret"
-      "Path to the Google OAuth client_secret used by org-gcal.")
-    (defvar afm/org-gcal-sync-timer nil
-      "Timer for background org-gcal syncs.")
-
-    (defun afm/org-gcal--read-file-string (file)
-      "Return FILE trimmed to a single string, or nil when FILE is missing/empty."
-      (when (file-readable-p (expand-file-name file))
-        (let ((value (with-temp-buffer
-                       (insert-file-contents (expand-file-name file))
-                       (string-trim (buffer-string)))))
-          (unless (string-empty-p value)
-            value))))
-
-    (defun afm/org-gcal-load-client-credentials ()
-      "Load org-gcal OAuth credentials from disk and register the provider."
-      (interactive)
-      (setq org-gcal-client-id
-            (afm/org-gcal--read-file-string afm/org-gcal-client-id-file)
-            org-gcal-client-secret
-            (afm/org-gcal--read-file-string afm/org-gcal-client-secret-file))
-      (when (and org-gcal-client-id org-gcal-client-secret
-                 (fboundp 'org-gcal-reload-client-id-secret))
-        (org-gcal-reload-client-id-secret)))
-
-    (defun afm/org-gcal-credentials-ready-p ()
-      "Return non-nil when both org-gcal OAuth credential files are present."
-      (and (stringp org-gcal-client-id)
-           (not (string-empty-p org-gcal-client-id))
-           (stringp org-gcal-client-secret)
-           (not (string-empty-p org-gcal-client-secret))))
-
-    (defun afm/org-gcal-ensure-credentials (&rest _)
-      "Reload org-gcal credentials and raise a clear error when they are missing."
-      (afm/org-gcal-load-client-credentials)
-      (unless (afm/org-gcal-credentials-ready-p)
-        (user-error
-         (concat "org-gcal OAuth credentials are not configured. "
-                 "Create ~/.org-gcal-client-id and ~/.org-gcal-client-secret, "
-                 "then run M-x afm/org-gcal-reset-auth"))))
-
-    (defun afm/org-gcal-reset-auth ()
-      "Forget cached org-gcal OAuth state and start a fresh auth flow."
-      (interactive)
-      (afm/org-gcal-ensure-credentials)
-      (when (fboundp 'org-gcal--sync-unlock)
-        (org-gcal--sync-unlock))
-      (when (boundp 'oauth2-auto--plstore-cache)
-        (clrhash oauth2-auto--plstore-cache))
-      (when (and (boundp 'oauth2-auto-plstore)
-                 (file-exists-p oauth2-auto-plstore))
-        (delete-file oauth2-auto-plstore))
-      (when (fboundp 'org-gcal-sync-tokens-clear)
-        (org-gcal-sync-tokens-clear))
-      (org-gcal-sync))
-
-    (defun afm/org-gcal-sync-maybe ()
-      "Sync org-gcal when credentials are configured.
-Background timers stay silent until credentials exist."
-      (interactive)
-      (afm/org-gcal-load-client-credentials)
-      (when (afm/org-gcal-credentials-ready-p)
-        (condition-case err
-            (org-gcal-sync)
-          (error
-           (message "org-gcal sync failed: %s" (error-message-string err))
-           (when (called-interactively-p 'interactive)
-             (signal (car err) (cdr err)))))))
-
-    (defun afm/org-gcal-cancel-legacy-sync-timers ()
-      "Cancel older anonymous org-gcal timers left over from previous config loads."
-      (dolist (timer (append timer-list timer-idle-list))
-        (let ((fn (ignore-errors (timer--function timer))))
-          (when (and fn
-                     (not (eq fn #'afm/org-gcal-sync-maybe))
-                     (string-match-p "org-gcal-sync" (prin1-to-string fn)))
-            (cancel-timer timer)))))
-
-    (defun afm/org-gcal-install-sync-timer ()
-      "Install the background org-gcal sync timer."
-      (afm/org-gcal-cancel-legacy-sync-timers)
-      (when (timerp afm/org-gcal-sync-timer)
-        (cancel-timer afm/org-gcal-sync-timer))
-      (setq afm/org-gcal-sync-timer
-            (run-at-time 60 (* 15 60) #'afm/org-gcal-sync-maybe)))
-
-    (dolist (fn '(org-gcal-sync org-gcal-post-at-point))
-      (advice-add fn :before #'afm/org-gcal-ensure-credentials))
-
-    (setq org-gcal-fetch-file-alist
-          `(("primary" . ,(concat org-directory "/gcal.org"))))
-    (afm/org-gcal-load-client-credentials)
-    (afm/org-gcal-install-sync-timer))
-#+end_src
-
-
-#+end_comment
 *** Babel
 **** Async
 #+begin_src emacs-lisp
@@ -2338,6 +2183,313 @@ and plain-text URLs."
                      (eww url)
                      (current-buffer))))
           (display-buffer buf '(display-buffer-pop-up-window))))))
+
+  (require 'bibtex)
+  (require 'cl-lib)
+  (require 'subr-x)
+  (require 'eww)
+
+  (defvar afm/bib-eww-review-items nil)
+  (defvar afm/bib-eww-review-index 0)
+  (defvar afm/bib-eww-review-source-buffer nil)
+  (defvar afm/bib-eww-review-window nil)
+  (defvar afm/bib-eww-review-author-count 3)
+  (defvar-local afm/bib-eww-review-buffer-item nil)
+  (defvar-local afm/bib-eww-review-buffer-index 0)
+
+  (defvar afm/bib-eww-review-mode-map
+    (let ((map (make-sparse-keymap)))
+      (define-key map (kbd "n") #'afm/bib-eww-review-next)
+      (define-key map (kbd "p") #'afm/bib-eww-review-previous)
+      (define-key map (kbd "q") #'afm/bib-eww-review-quit)
+      (define-key map (kbd "s") #'afm/bib-eww-review-source)
+      (define-key map (kbd "w") #'afm/bib-eww-review-copy-url)
+      (define-key map (kbd "o") #'afm/bib-eww-review-open-external)
+      map))
+
+  (define-minor-mode afm/bib-eww-review-mode
+    "Navigate BibTeX links one-by-one in EWW.
+
+Keys: n next, p previous, s source entry, w copy URL, o external browser, q quit."
+    :lighter " BibReview"
+    :keymap afm/bib-eww-review-mode-map)
+
+  (defun afm/bib-eww-review--field (entry field)
+    (cdr (assoc field entry)))
+
+  (defun afm/bib-eww-review--clean (s)
+    (when (stringp s)
+      (setq s (replace-regexp-in-string "[[:space:]\n\t]+" " " s))
+      (setq s (replace-regexp-in-string "[{}]" "" s))
+      (string-trim s)))
+
+  (defun afm/bib-eww-review--trim-url (s)
+    (setq s (string-trim s))
+    (while (and (> (length s) 0)
+                (memq (aref s (1- (length s)))
+                      '(?\} ?\) ?\] ?, ?\; ?. ?\' ?\")))
+      (setq s (substring s 0 -1)))
+    s)
+
+  (defun afm/bib-eww-review--doi-url (doi)
+    (when-let* ((clean (afm/bib-eww-review--clean doi)))
+      (setq clean (afm/bib-eww-review--trim-url clean))
+      (setq clean
+            (replace-regexp-in-string
+             "\\`https?://\\(?:dx\\.\\)?doi\\.org/" "" clean))
+      (concat "https://doi.org/" clean)))
+
+  (defun afm/bib-eww-review--entry-url (entry)
+    (or (when-let* ((url (afm/bib-eww-review--field entry "url")))
+          (afm/bib-eww-review--trim-url (afm/bib-eww-review--clean url)))
+        (afm/bib-eww-review--doi-url (afm/bib-eww-review--field entry "doi"))))
+
+  (defun afm/bib-eww-review--collect (&optional beg end)
+    (require 'bibtex)
+    (let ((end-marker (copy-marker (or end (point-max))))
+          items)
+      (save-excursion
+        (goto-char (or beg (point-min)))
+        (while (re-search-forward "^[[:space:]]*@" end-marker t)
+          (let ((start (match-beginning 0)))
+            (goto-char start)
+            (condition-case nil
+                (let* ((entry (bibtex-parse-entry t))
+                       (url (afm/bib-eww-review--entry-url entry)))
+                  (when (and url (string-match-p "\\`https?://" url))
+                    (push (list :key (afm/bib-eww-review--field entry "=key=")
+                                :url url
+                                :title (afm/bib-eww-review--clean
+                                        (afm/bib-eww-review--field entry "title"))
+                                :author (afm/bib-eww-review--clean
+                                         (afm/bib-eww-review--field entry "author"))
+                                :year (afm/bib-eww-review--clean
+                                       (afm/bib-eww-review--field entry "year"))
+                                :start start
+                                :buffer (current-buffer))
+                          items))
+                  (bibtex-end-of-entry))
+              (error (goto-char (1+ start)))))))
+      (setq items (nreverse items))
+      (let ((seen nil)
+            deduped)
+        (dolist (item items)
+          (unless (member (plist-get item :url) seen)
+            (push (plist-get item :url) seen)
+            (push item deduped)))
+        (nreverse deduped))))
+
+  (defun afm/bib-eww-review--current-item ()
+    (nth afm/bib-eww-review-index afm/bib-eww-review-items))
+
+  (defun afm/bib-eww-review--first-authors (authors)
+    (let* ((raw (or authors "Unknown authors"))
+           (parts (split-string raw "[[:space:]]+and[[:space:]]+" t))
+           (shown (cl-subseq parts 0 (min (length parts) afm/bib-eww-review-author-count)))
+           (suffix (if (> (length parts) (length shown)) " et al." "")))
+      (concat (mapconcat #'identity shown "; ") suffix)))
+
+  (defun afm/bib-eww-review--summary-lines (&optional error-message item index)
+    (let* ((item (or item afm/bib-eww-review-buffer-item
+                     (afm/bib-eww-review--current-item)))
+           (index (or index afm/bib-eww-review-buffer-index
+                      afm/bib-eww-review-index))
+           (title (truncate-string-to-width
+                   (or (plist-get item :title) "Untitled") 120 nil nil "..."))
+           (authors (truncate-string-to-width
+                     (afm/bib-eww-review--first-authors (plist-get item :author))
+                     120 nil nil "..."))
+           (year (or (plist-get item :year) "n.d."))
+           (key (or (plist-get item :key) "no-key"))
+           (url (or (plist-get item :url) "")))
+      (list
+       (format "%sBib %d/%d  %s  [%s]"
+               (if error-message (concat "EWW error: " error-message "  ") "")
+               (1+ index)
+               (length afm/bib-eww-review-items)
+               title key)
+       (format "Year: %s | First authors: %s | URL: %s" year authors url))))
+
+  (defun afm/bib-eww-review--message (&optional error-message item index)
+    (let ((lines (afm/bib-eww-review--summary-lines error-message item index)))
+      (message "%s -- %s  [n/p/s/w/o/q]" (car lines) (cadr lines))))
+
+  (defun afm/bib-eww-review--set-header (&optional error-message)
+    (let ((lines (afm/bib-eww-review--summary-lines error-message)))
+      (setq-local header-line-format
+                  (concat " " (car lines) "    keys: n next, p prev, s source, w copy URL, o browser, q quit"))))
+
+  (defun afm/bib-eww-review--remove-overview ()
+    (let ((inhibit-read-only t))
+      (save-excursion
+        (goto-char (point-min))
+        (when (get-text-property (point) 'afm-bib-eww-review-overview)
+          (let ((end (next-single-property-change
+                      (point) 'afm-bib-eww-review-overview nil (point-max))))
+            (delete-region (point) end))))))
+
+  (defun afm/bib-eww-review--insert-overview ()
+    (when (and afm/bib-eww-review-mode afm/bib-eww-review-buffer-item)
+      (let* ((lines (afm/bib-eww-review--summary-lines))
+             (text (concat (car lines) "\n" (cadr lines)
+                           "\nKeys: n next, p previous, s source, w copy URL, o external browser, q quit\n\n"))
+             (inhibit-read-only t))
+        (afm/bib-eww-review--remove-overview)
+        (save-excursion
+          (goto-char (point-min))
+          (insert (propertize text
+                              'afm-bib-eww-review-overview t
+                              'face '(:weight bold)))))))
+
+  (defun afm/bib-eww-review--review-buffer-live-p ()
+    (and (window-live-p afm/bib-eww-review-window)
+         (buffer-live-p (window-buffer afm/bib-eww-review-window))
+         (with-current-buffer (window-buffer afm/bib-eww-review-window)
+           afm/bib-eww-review-mode)))
+
+  (defun afm/bib-eww-review--show ()
+    (unless afm/bib-eww-review-items
+      (user-error "No active BibTeX EWW review"))
+    (let* ((item (afm/bib-eww-review--current-item))
+           (index afm/bib-eww-review-index)
+           (url (plist-get item :url))
+           eww-buffer
+           error-message)
+      (condition-case err
+          (progn
+            (require 'eww)
+            (if (afm/bib-eww-review--review-buffer-live-p)
+                (progn
+                  (select-window afm/bib-eww-review-window)
+                  (eww url)
+                  (setq eww-buffer (current-buffer)))
+              (setq eww-buffer
+                    (save-window-excursion
+                      (eww url t)
+                      (current-buffer)))
+              (setq afm/bib-eww-review-window
+                    (display-buffer eww-buffer
+                                    '((display-buffer-pop-up-window)
+                                      (inhibit-same-window . t))))
+              (select-window afm/bib-eww-review-window))
+            (with-current-buffer eww-buffer
+              (setq-local afm/bib-eww-review-buffer-item item
+                          afm/bib-eww-review-buffer-index index)
+              (afm/bib-eww-review-mode 1)
+              (afm/bib-eww-review--set-header)
+              (add-hook 'eww-after-render-hook
+                        #'afm/bib-eww-review--insert-overview nil t)
+              (afm/bib-eww-review--insert-overview)))
+        (error
+         (setq error-message (error-message-string err))))
+      (when error-message
+        (with-current-buffer (get-buffer-create "*BibTeX EWW review errors*")
+          (goto-char (point-max))
+          (insert (format "%s\t%s\t%s\n"
+                          (current-time-string) url error-message))))
+      (when (and eww-buffer (buffer-live-p eww-buffer))
+        (with-current-buffer eww-buffer
+          (afm/bib-eww-review--set-header error-message)))
+      (afm/bib-eww-review--message error-message item index)))
+
+  (defun afm/bib-eww-review-next (&optional n)
+    "Open the next BibTeX review link in EWW."
+    (interactive "p")
+    (setq n (or n 1))
+    (unless afm/bib-eww-review-items
+      (user-error "No active BibTeX EWW review"))
+    (setq afm/bib-eww-review-index
+          (min (1- (length afm/bib-eww-review-items))
+               (max 0 (+ afm/bib-eww-review-index n))))
+    (afm/bib-eww-review--show))
+
+  (defun afm/bib-eww-review-previous (&optional n)
+    "Open the previous BibTeX review link in EWW."
+    (interactive "p")
+    (afm/bib-eww-review-next (- (or n 1))))
+
+  (defun afm/bib-eww-review-source ()
+    "Jump to the BibTeX source entry for the current review item."
+    (interactive)
+    (let ((item (afm/bib-eww-review--current-item)))
+      (unless item (user-error "No active BibTeX EWW review"))
+      (pop-to-buffer (plist-get item :buffer))
+      (goto-char (plist-get item :start))
+      (recenter)))
+
+  (defun afm/bib-eww-review-copy-url ()
+    "Copy the current BibTeX review URL."
+    (interactive)
+    (let ((url (plist-get (afm/bib-eww-review--current-item) :url)))
+      (unless url (user-error "No active BibTeX EWW review"))
+      (kill-new url)
+      (message "Copied current review URL")))
+
+  (defun afm/bib-eww-review-open-external ()
+    "Open the current BibTeX review URL with `browse-url'."
+    (interactive)
+    (let ((url (plist-get (afm/bib-eww-review--current-item) :url)))
+      (unless url (user-error "No active BibTeX EWW review"))
+      (browse-url url)))
+
+  (defun afm/bib-eww-review-quit ()
+    "Quit the active BibTeX EWW review session."
+    (interactive)
+    (setq afm/bib-eww-review-items nil
+          afm/bib-eww-review-index 0
+          afm/bib-eww-review-source-buffer nil
+          afm/bib-eww-review-window nil)
+    (afm/bib-eww-review-mode -1)
+    (message "Ended BibTeX EWW review"))
+
+  (defun afm/bib-eww-review--bib-buffer ()
+    (cond
+     ((or (derived-mode-p 'bibtex-mode)
+          (and buffer-file-name
+               (string-match-p "\\.bib\\'" buffer-file-name)))
+      (current-buffer))
+     ((and (buffer-live-p afm/bib-eww-review-source-buffer)
+           (with-current-buffer afm/bib-eww-review-source-buffer
+             (or (derived-mode-p 'bibtex-mode)
+                 (and buffer-file-name
+                      (string-match-p "\\.bib\\'" buffer-file-name)))))
+      afm/bib-eww-review-source-buffer)
+     (t
+      (let ((bib-buffers
+             (cl-remove-if-not
+              (lambda (buf)
+                (with-current-buffer buf
+                  (or (derived-mode-p 'bibtex-mode)
+                      (and buffer-file-name
+                           (string-match-p "\\.bib\\'" buffer-file-name)))))
+              (buffer-list))))
+        (cond
+         ((= (length bib-buffers) 1) (car bib-buffers))
+         ((null bib-buffers) (user-error "No BibTeX buffer is open"))
+         (t (user-error "Run from a BibTeX buffer; multiple BibTeX buffers are open")))))))
+
+  (defun afm/bib-eww-review-links (&optional beg end)
+    "Review BibTeX URL/DOI links one at a time in EWW.
+
+With an active region in a BibTeX buffer, collect entries only from that region.
+The EWW buffer uses these keys: n next, p previous, s source entry, w copy URL,
+o external browser, q quit."
+    (interactive
+     (when (and (use-region-p)
+                (or (derived-mode-p 'bibtex-mode)
+                    (and buffer-file-name
+                         (string-match-p "\\.bib\\'" buffer-file-name))))
+       (list (region-beginning) (region-end))))
+    (let ((source (afm/bib-eww-review--bib-buffer)))
+      (with-current-buffer source
+        (setq afm/bib-eww-review-source-buffer source
+              afm/bib-eww-review-window (and (afm/bib-eww-review--review-buffer-live-p)
+                                             afm/bib-eww-review-window)
+              afm/bib-eww-review-items (afm/bib-eww-review--collect beg end)
+              afm/bib-eww-review-index 0)))
+    (unless afm/bib-eww-review-items
+      (user-error "No URL or DOI links found"))
+    (afm/bib-eww-review--show))
 
   (defun afm/org-open-links-in-region (beg end)
     "Open every org link between BEG and END. With an active region use
@@ -2873,6 +3025,29 @@ These settings keep emacs from littering the filesystem with buffer backups. The
 
 test
 ** Project/Buffers/Perspectives
+*** Remember visited projects
+Register local projects independently of Magit's lazy loading. Dashboard
+launches also explicitly remember non-VCS working directories such as notes.
+#+NAME: project-registration
+#+BEGIN_SRC emacs-lisp
+  (require 'project)
+
+  (defun afm/project-auto-remember (&optional directory explicit)
+    "Remember the local project at DIRECTORY, defaulting to the current buffer.
+When EXPLICIT is non-nil, also remember directories outside version control."
+    (let ((directory (file-name-as-directory
+                      (expand-file-name (or directory default-directory)))))
+      ;; Merely visiting a buffer must not initiate a remote connection.
+      (when (and (not (file-remote-p directory))
+                 (file-directory-p directory))
+        (when-let* ((proj (or (project-current nil directory)
+                             (and explicit (cons 'transient directory)))))
+          (project-remember-project proj)))))
+
+  (add-hook 'find-file-hook #'afm/project-auto-remember)
+  (add-hook 'dired-mode-hook #'afm/project-auto-remember)
+#+END_SRC
+
 *** COMMENT Persp-mode
 #+begin_src emacs-lisp 
   (use-package persp-mode
@@ -3432,12 +3607,6 @@ Very useful for interactive parsing
       (add-to-list 'project-switch-commands
                    '(magit-project-status "Magit") t))
 
-    (defun afm/project-auto-remember ()
-      "Remember the current buffer's project so it shows up in `project-switch-project'."
-      (when-let* ((proj (project-current nil)))
-        (project-remember-project proj)))
-    (add-hook 'find-file-hook #'afm/project-auto-remember)
-
     ;; Tell meow to use insert state inside magit's TUI buffers. Magit binds
     ;; many single-key commands (s/u/c/P/F/l/d/x/RET/TAB …) that conflict
     ;; with meow's normal-state bindings. Same pattern as mu4e/ghostel/org-agenda
@@ -3614,6 +3783,12 @@ See [[https://github.com/afermg/emacs-llm-dashboard][afermg/emacs-llm-dashboard]
     (setq llm-dashboard-terminal-backend 'ghostel)
     :config
     (afm/llm-dashboard-post-load)
+
+    (defun afm/llm-dashboard-remember-project (cwd &rest _)
+      "Persist CWD in the project picker after a successful dashboard launch."
+      (afm/project-auto-remember cwd t))
+    (advice-add 'llm-dashboard--launch :after
+                #'afm/llm-dashboard-remember-project)
 
     ;; Some forges, including Overleaf, use an opaque hexadecimal project ID
     ;; as the remote URL basename.  In that case the checkout directory is a
@@ -3975,6 +4150,8 @@ Mail client using mu (maildir-utils) as the backend, mbsync (isync) for IMAP syn
 System dependencies (in packages.nix): =mu=, =mu.mu4e=, =isync=, =msmtp=, and =oama=.
 
 Run =mbsync -a= to do the initial sync, then =mu init --maildir=~/.mail --my-address=alan@quasimorphic.com --my-address=amunozgo@broadinstitute.org --my-address=amunozgo@purdue.edu= and =mu index= to build the database. A pull-only channel downloads Gmail's canonical =[Gmail]/All Mail= into =~/.cache/mirror-mail/broad= so unlabeled archived messages are included without adding duplicate results to mu4e. After each sync, =mirror-mail purdue broad broad-spam= uploads complete messages from every synchronized Purdue and Broad folder into the searchable =INBOX.Purdue= and =INBOX.Broad-Archive= archives on quasimorphic, while also copying Gmail spam into MXroute's native =Junk= folder. Copies are deduplicated by Message-ID and capped at 500 new messages per destination per run. Before enabling bidirectional archive sync for the first time, run =mirror-mail --record-existing purdue broad broad-spam= to seed import receipts from existing remote and locally retained copies, including Trash and Junk. Receipts live in =~/.local/state/mirror-mail/imports.sqlite3=; retain/back up this file so moving or deleting an imported message does not cause the next importer run to restore it. An uninitialized destination fails closed until its receipts are seeded. Because the complete RFC 822 messages are stored on MXroute, their subjects and ordinary message bodies are searchable there. The six archives (=alanmunoz=, =Broad-Archive=, =cachora=, =Old-Gmail=, =Old-Gmail-Ska=, and =Purdue=) live directly under =INBOX=. All MXroute folders, including the six Inbox children, synchronize messages, moves, flags and deletions bidirectionally (=Sync All=, =Expunge Both=). In mu4e, execute pending marks, then sync (=U=): trashing an MXroute copy puts it in MXroute's =Trash=, moving it to =Junk= does the same remotely, and permanent deletion removes the remote copy. Normal =d= trashing does not set the Maildir deletion flag, so syncing will not immediately expunge it. Permanent deletion (=D=, Delete key, or bulk delete marks) is allowed only inside the message's own Trash folder and requires an explicit confirmation at execution, even with a prefix argument. Mixed batches are checked before any actions run; cancelling preserves the marks. This does not delete a separate original copy from Broad or Purdue. A final archive/Junk sync makes new copies visible in mu4e. Use the =Inbox + archives= bookmark (=b i=) to search Inbox and its archive children together. Junk lives outside Inbox, so it is excluded from this search. Use the server's native =Junk= folder for all spam instead of maintaining a separate Spam folder.
+
+Purdue's received-mail folders (including Archive, Junk, Deleted Items, and Drafts) are download-only: =Sync Pull=, =Create Near=, and =Expunge Near=. Local copies, flags, moves, and deletions are never pushed back into those Purdue folders. Organize the originals in Purdue webmail, or work with the bidirectional MXroute copies. The separate =purdue-sent= channel preserves bidirectional =Sent Items= synchronization so mu4e's outgoing copies still reach Purdue. Normal =mbsync -a= runs both channels; a manual Purdue-only sync must name both =purdue purdue-sent=. Both preserve arrival timestamps with =CopyArrivalDate yes= and reuse existing per-folder sync state; never reset that state to apply this policy.
 
 The =mu= backend and =mu4e= Emacs package come from nixpkgs's matching =mu= outputs. Installing both =mu= and =mu.mu4e= keeps their versions aligned and provides the generated =mu4e-config.el=, so no Straight checkout or hand-written version expectation is needed.
 

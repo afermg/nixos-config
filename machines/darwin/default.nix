@@ -12,6 +12,26 @@ let
     #!/bin/sh
     emacsclient -c -n &
   '';
+  # Microsoft 2.4 GHz Transceiver v9.0 (045e:07a5): keep Ctrl as Control,
+  # put Command on Alt (beside the space bar), and Option on the Windows keys.
+  microsoftKeyboardModifiers = [
+    {
+      HIDKeyboardModifierMappingSrc = 30064771298; # Left Alt
+      HIDKeyboardModifierMappingDst = 30064771299; # Left Command
+    }
+    {
+      HIDKeyboardModifierMappingSrc = 30064771299; # Left Windows
+      HIDKeyboardModifierMappingDst = 30064771298; # Left Option
+    }
+    {
+      HIDKeyboardModifierMappingSrc = 30064771302; # Right Alt
+      HIDKeyboardModifierMappingDst = 30064771303; # Right Command
+    }
+    {
+      HIDKeyboardModifierMappingSrc = 30064771303; # Right Windows
+      HIDKeyboardModifierMappingDst = 30064771302; # Right Option
+    }
+  ];
   disabledCtrlSpaceHotkey = lib.generators.toPlist { escape = true; } {
     enabled = false;
     value = {
@@ -140,6 +160,18 @@ in
         /usr/bin/sudo --user=${lib.escapeShellArg user} -- \
         /usr/bin/defaults write com.apple.symbolichotkeys AppleSymbolicHotKeys \
           -dict-add 60 ${lib.escapeShellArg disabledCtrlSpaceHotkey}
+
+      # Native per-keyboard preferences survive reconnects and logins. Keep
+      # these separate from UserKeyMapping, which swaps Escape and Caps Lock.
+      echo >&2 "Configuring Microsoft keyboard modifiers..."
+      /bin/launchctl asuser "$(/usr/bin/id -u -- ${lib.escapeShellArg user})" \
+        /usr/bin/sudo --user=${lib.escapeShellArg user} -- \
+        /usr/bin/defaults -currentHost write -g \
+          com.apple.keyboard.modifiermapping.1118-1957-0 \
+          ${lib.escapeShellArg (lib.generators.toPlist { escape = true; } microsoftKeyboardModifiers)}
+      /bin/launchctl asuser "$(/usr/bin/id -u -- ${lib.escapeShellArg user})" \
+        /usr/bin/sudo --user=${lib.escapeShellArg user} -- \
+        /System/Library/PrivateFrameworks/SystemAdministration.framework/Resources/activateSettings -u
     '';
   };
 

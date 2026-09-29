@@ -1,9 +1,10 @@
-# === Account: quasimorphic ===
+# Normal account policies, enabled only after a complete checksum-verified seed
+# and a non-mutating cutover preview. Keep the copied per-folder UID state.
 IMAPAccount quasimorphic
 Host witcher.mxrouting.net
 Port 993
 User alan@quasimorphic.com
-PassCmd "rbw get 'Quasimorphic Email'"
+PassCmd "@QUASIMORPHIC_PASSWORD@"
 TLSType IMAPS
 CertificateFile /etc/ssl/certs/ca-certificates.crt
 
@@ -18,15 +19,13 @@ Inbox ~/.mail/quasimorphic/Inbox
 Channel quasimorphic
 Far :quasimorphic-remote:
 Near :quasimorphic-local:
-# Separate channels share the same bidirectional policy; Junk is native spam.
 Patterns * !INBOX/*
 Sync All
 Create Both
 Expunge Both
+Remove None
 SyncState *
 
-# Moves, flags and message deletions in Inbox children also propagate both ways.
-# mirror-mail keeps import receipts so removed messages are not uploaded again.
 Channel quasimorphic-archives
 Far :quasimorphic-remote:
 Near :quasimorphic-local:
@@ -34,14 +33,14 @@ Patterns INBOX/*
 Sync All
 Create Both
 Expunge Both
+Remove None
 SyncState *
 
-# === Account: broad ===
 IMAPAccount broad
 Host imap.gmail.com
 Port 993
 User amunozgo@broadinstitute.org
-PassCmd "rbw get 'Broad Email App Password'"
+PassCmd "@BROAD_PASSWORD@"
 TLSType IMAPS
 CertificateFile /etc/ssl/certs/ca-certificates.crt
 AuthMechs LOGIN
@@ -58,13 +57,12 @@ Channel broad
 Far :broad-remote:
 Near :broad-local:
 Patterns * !"[Gmail]/All Mail"
+Sync All
 Create Both
 Expunge Both
+Remove None
 SyncState *
 
-# Pull Gmail's canonical All Mail mailbox into a cache outside mu4e's maildir.
-# This captures messages that have no visible label without adding duplicate
-# search results to mu. Pull-only prevents local state from changing Gmail.
 MaildirStore broad-archive-local
 SubFolders Verbatim
 Path ~/.cache/mirror-mail/broad/
@@ -76,14 +74,15 @@ Near :broad-archive-local:
 Patterns "[Gmail]/All Mail"
 Sync Pull
 Create Near
+Expunge None
+Remove None
 SyncState *
 
-# === Account: purdue ===
 IMAPAccount purdue
 Host outlook.office365.com
 Port 993
 User amunozgo@purdue.edu
-PassCmd "oama access amunozgo@purdue.edu"
+PassCmd "@OAMA@ access amunozgo@purdue.edu"
 TLSType IMAPS
 CertificateFile /etc/ssl/certs/ca-certificates.crt
 AuthMechs XOAUTH2
@@ -96,9 +95,6 @@ SubFolders Verbatim
 Path ~/.mail/purdue/
 Inbox ~/.mail/purdue/Inbox
 
-# Purdue is the source of truth for received mail. Never upload local copies
-# or push local moves/deletions back into these folders. Expunge Near only
-# applies Purdue's deletions locally; it must not expunge the source server.
 Channel purdue
 Far :purdue-remote:
 Near :purdue-local:
@@ -106,11 +102,11 @@ Patterns * !"Sent Items" !Calendar !Calendar/* !Contacts !Journal !Notes !Outbox
 Sync Pull
 Create Near
 Expunge Near
+Remove None
 CopyArrivalDate yes
 SyncState *
 
-# mu4e saves outgoing messages locally here; only Sent permits uploads.
-# Reuse the existing per-folder state: do not reset UIDs during this split.
+# Upload locally sent messages; the rest of the university mailbox is pull-only.
 Channel purdue-sent
 Far :purdue-remote:
 Near :purdue-local:
@@ -118,5 +114,6 @@ Patterns "Sent Items"
 Sync All
 Create Both
 Expunge Both
+Remove None
 CopyArrivalDate yes
 SyncState *
