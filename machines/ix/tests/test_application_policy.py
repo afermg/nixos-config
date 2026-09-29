@@ -142,10 +142,12 @@ class ApplicationPolicyTests(unittest.TestCase):
         self.assertIn("var/lib/private/blocky", text)
         self.assertNotIn("/var/lib/hindsight/pg0", text)
 
-    def test_dns_blocking_is_tailnet_only_and_not_client_cutover(self):
+    def test_dns_blocking_has_explicit_listeners_and_not_client_cutover(self):
         text = (ROOT / "machines/ix/dns.nix").read_text()
         self.assertIn("services.blocky", text)
-        self.assertIn('dns = "100.114.49.10:53";', text)
+        self.assertIn('lanAddress = "192.168.1.162";', text)
+        self.assertRegex(text, r'dns = \[\s*"100\.114\.49\.10:53"\s*"\$\{lanAddress\}:53"\s*\];')
+        self.assertIn("https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/wildcard/multi.txt", text)
         self.assertIn('http = "127.0.0.1:4000";', text)
         self.assertIn("https://dns.quad9.net/dns-query", text)
         self.assertIn("https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts", text)
@@ -155,6 +157,22 @@ class ApplicationPolicyTests(unittest.TestCase):
         self.assertNotIn("0.0.0.0:53", text)
         host = (ROOT / "machines/ix/default.nix").read_text()
         self.assertIn("./dns.nix", host)
+
+    def test_dns_lan_firewall_is_ipv4_interface_and_subnet_scoped(self):
+        text = (ROOT / "machines/ix/dns.nix").read_text()
+        self.assertIn(
+            '-i end0 -s 192.168.1.0/24 -d ${lanAddress}/32 -p ${protocol} --dport 53 '
+            '-m comment --comment ix-blocky-lan-${protocol} -j nixos-fw-accept',
+            text,
+        )
+        for protocol in ("tcp", "udp"):
+            self.assertIn('iptables -w -A nixos-fw ${lanDnsRule "' + protocol + '"}', text)
+            self.assertIn('iptables -w -D nixos-fw ${lanDnsRule "' + protocol + '"} 2>/dev/null || true', text)
+        self.assertNotRegex(text, r'networking\.firewall\.allowed(?:TCP|UDP)Ports')
+        self.assertNotRegex(text, r'trustedInterfaces\s*=\s*\[[^]]*"end0"')
+        self.assertNotIn('[::]', text)
+        self.assertNotIn('networking.nameservers', text)
+        self.assertNotIn('services.tailscale', text)
 
     def test_home_assistant_is_minimal_with_explicit_roborock_dependencies(self):
         text = (ROOT / "machines/ix/services.nix").read_text()

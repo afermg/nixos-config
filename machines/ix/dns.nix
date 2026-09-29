@@ -1,11 +1,21 @@
 { ... }:
+let
+  # Reserve this lease on the Verizon router before advertising it as LAN DNS.
+  lanAddress = "192.168.1.162";
+  lanDnsRule =
+    protocol:
+    "-i end0 -s 192.168.1.0/24 -d ${lanAddress}/32 -p ${protocol} --dport 53 -m comment --comment ix-blocky-lan-${protocol} -j nixos-fw-accept";
+in
 {
   services.blocky = {
     enable = true;
     enableConfigCheck = true;
     settings = {
       ports = {
-        dns = "100.114.49.10:53";
+        dns = [
+          "100.114.49.10:53"
+          "${lanAddress}:53"
+        ];
         http = "127.0.0.1:4000";
       };
       upstreams.groups.default = [
@@ -22,7 +32,11 @@
         }
       ];
       blocking = {
-        denylists.ads = [ "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts" ];
+        denylists.ads = [
+          "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
+          # HaGeZi Multi NORMAL; upstream recommends wildcard syntax for Blocky >= 0.23.
+          "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/wildcard/multi.txt"
+        ];
         allowlists.ads = [
           ''
             tailscale.com
@@ -44,10 +58,27 @@
   };
 
   systemd.services.blocky = {
-    after = [ "tailscaled.service" ];
-    wants = [ "tailscaled.service" ];
+    after = [
+      "network-online.target"
+      "tailscaled.service"
+    ];
+    wants = [
+      "network-online.target"
+      "tailscaled.service"
+    ];
     serviceConfig.RestartSec = "20s";
   };
+
+  # LAN-only IPv4 DNS access; do not open port 53 globally or on public IPv6.
+  # Keep the management API loopback-only and the existing Tailscale access.
+  networking.firewall.extraCommands = ''
+    iptables -w -A nixos-fw ${lanDnsRule "tcp"}
+    iptables -w -A nixos-fw ${lanDnsRule "udp"}
+  '';
+  networking.firewall.extraStopCommands = ''
+    iptables -w -D nixos-fw ${lanDnsRule "tcp"} 2>/dev/null || true
+    iptables -w -D nixos-fw ${lanDnsRule "udp"} 2>/dev/null || true
+  '';
 
   networking.firewall.interfaces.tailscale0 = {
     allowedTCPPorts = [ 53 ];
