@@ -18,6 +18,12 @@ __pycache__/
 /.claude/*
 !/.claude/skills/
 
+# Never commit plaintext copies of the private Blocky overlay; keep only .age.
+/secrets/blocky-private.yaml
+/secrets/blocky-private.yml
+/secrets/blocky-private.json
+/secrets/blocky-private.yaml.decrypted
+
 # Nix build outputs
 result
 **/result

@@ -174,6 +174,33 @@ class ApplicationPolicyTests(unittest.TestCase):
         self.assertNotIn('networking.nameservers', text)
         self.assertNotIn('services.tailscale', text)
 
+    def test_dns_private_policy_uses_root_only_runtime_credentials(self):
+        text = (ROOT / "machines/ix/dns.nix").read_text()
+        self.assertIn('age.identityPaths = [ "/etc/ssh/ssh_host_ed25519_key" ];', text)
+        self.assertRegex(
+            text,
+            r'age\.secrets\.blocky-private = \{\s*'
+            r'file = ../../secrets/blocky-private\.yaml\.age;\s*'
+            r'mode = "0400";\s*owner = "root";\s*group = "root";',
+        )
+        self.assertIn('"00-public.yaml:${publicConfig}"', text)
+        self.assertIn('"10-private.yaml:${config.age.secrets.blocky-private.path}"', text)
+        self.assertIn('enableConfigCheck = true;', text)
+        self.assertIn('restartTriggers = [ config.age.secrets.blocky-private.file ];', text)
+        self.assertIn('ExecStartPre = [ "${lib.getExe config.services.blocky.package} --config %d validate" ];', text)
+        self.assertIn('ExecStart = lib.mkForce "${lib.getExe config.services.blocky.package} --config %d";', text)
+        self.assertNotIn('builtins.readFile', text)
+        recipients = (ROOT / "secrets/secrets.nix").read_text()
+        self.assertRegex(
+            recipients,
+            r'"blocky-private\.yaml\.age"\.publicKeys = \[\s*personal_key\s*ix_host_key\s*\];',
+        )
+        encrypted = (ROOT / "secrets/blocky-private.yaml.age").read_bytes()
+        self.assertTrue(encrypted.startswith(b"age-encryption.org/v1\n"))
+        ignored = (ROOT / ".gitignore").read_text().splitlines()
+        for name in ("yaml", "yml", "json", "yaml.decrypted"):
+            self.assertIn("/secrets/blocky-private." + name, ignored)
+
     def test_home_assistant_is_minimal_with_explicit_roborock_dependencies(self):
         text = (ROOT / "machines/ix/services.nix").read_text()
         self.assertIn('server_host = "127.0.0.1";', text)

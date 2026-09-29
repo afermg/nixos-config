@@ -3,6 +3,7 @@ let
   personal_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAKdcdlNS1SO+rJHjRQWd33qvqBEZcZR8ypTQUeC9LZ4";
   moby_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIClOuXVukvwqgE+UDxJShus+JGprTC8QIoc1G/Ege5KK";
   ix_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICbdw/pGo2apLsXS8l9ArrL8FhJ8zTYBDQPs9HokthgE";
+  ix_host_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKY0holJSH6l/MeBPRWgzITfAVwT7dJESRBTP0pHjQA7";
   oppy_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINCW3CZ4r7VhI7+4rC+oOE4n3AMXEy3F2vm8jjHeTClR";
   keys = [
     personal_key
@@ -10,6 +11,10 @@ let
   ];
 in
 {
+  "blocky-private.yaml.age".publicKeys = [
+    personal_key
+    ix_host_key
+  ];
   "sshkey_personal.age".publicKeys = keys;
   "tailscale.age".publicKeys = keys;
   "atuin.age".publicKeys = keys;

@@ -1,5 +1,14 @@
-{ ... }:
+{
+  config,
+  inputs,
+  lib,
+  pkgs,
+  ...
+}:
 let
+  publicConfig =
+    (pkgs.formats.yaml { }).generate "blocky-public.yaml"
+      config.services.blocky.settings;
   # Reserve this lease on the Verizon router before advertising it as LAN DNS.
   lanAddress = "192.168.1.162";
   lanDnsRule =
@@ -7,6 +16,16 @@ let
     "-i end0 -s 192.168.1.0/24 -d ${lanAddress}/32 -p ${protocol} --dport 53 -m comment --comment ix-blocky-lan-${protocol} -j nixos-fw-accept";
 in
 {
+  imports = [ inputs.agenix.nixosModules.default ];
+
+  age.identityPaths = [ "/etc/ssh/ssh_host_ed25519_key" ];
+  age.secrets.blocky-private = {
+    file = ../../secrets/blocky-private.yaml.age;
+    mode = "0400";
+    owner = "root";
+    group = "root";
+  };
+
   services.blocky = {
     enable = true;
     enableConfigCheck = true;
@@ -66,7 +85,18 @@ in
       "network-online.target"
       "tailscaled.service"
     ];
-    serviceConfig.RestartSec = "20s";
+    restartTriggers = [ config.age.secrets.blocky-private.file ];
+    serviceConfig = {
+      RestartSec = "20s";
+      # systemd copies root-only secrets into this service's private credential
+      # directory. Blocky merges YAML files in lexical order at runtime.
+      LoadCredential = [
+        "00-public.yaml:${publicConfig}"
+        "10-private.yaml:${config.age.secrets.blocky-private.path}"
+      ];
+      ExecStartPre = [ "${lib.getExe config.services.blocky.package} --config %d validate" ];
+      ExecStart = lib.mkForce "${lib.getExe config.services.blocky.package} --config %d";
+    };
   };
 
   # LAN-only IPv4 DNS access; do not open port 53 globally or on public IPv6.
