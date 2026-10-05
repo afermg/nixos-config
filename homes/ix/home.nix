@@ -2,10 +2,15 @@
 # Applications were added only after normal boot, recovery, and rollback passed.
 { inputs, ... }:
 {
-  _module.args.piMsgInputs = inputs;
+  _module.args = {
+    piMsgInputs = inputs;
+    amunozInputs = inputs;
+  };
 
   imports = [
     inputs.agenix.homeManagerModules.default
+    ../../modules/shared/config/atuin/atuin.nix
+    ../../modules/shared/config/email/rbw.nix
     ../../modules/shared/config/pi-msg/pi-msg.nix
     ./applications.nix
   ];

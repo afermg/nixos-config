@@ -17,7 +17,7 @@ in
   ];
   "sshkey_personal.age".publicKeys = keys;
   "tailscale.age".publicKeys = keys;
-  "atuin.age".publicKeys = keys;
+  "atuin.age".publicKeys = keys ++ [ ix_key ];
   "cloudflared-overleaf.age".publicKeys = keys;
   "cloudflared-marimohub.age".publicKeys = keys;
   "cloudflared-marimohub-quasimorphic.age".publicKeys = keys;
