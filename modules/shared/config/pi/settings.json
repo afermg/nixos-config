@@ -12,7 +12,12 @@
   "packages": [
     "git:github.com/afermg/marimo-pair",
     "git:github.com/afermg/emacs-pair",
-    "https://github.com/nicobailon/pi-subagents"
+    "https://github.com/nicobailon/pi-subagents",
+    {
+      "source": "npm:@maheidem/pi-slack@0.2.1",
+      "skills": [],
+      "prompts": []
+    }
   ],
   "theme": "dark",
   "lastChangelogVersion": "0.85.1",
