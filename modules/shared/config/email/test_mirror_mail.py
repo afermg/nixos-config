@@ -30,6 +30,60 @@ class FakeConnection:
         return "OK", [b""]
 
 
+class RoutingConnection(FakeConnection):
+    """Small stateful IMAP model: UID moves, header scans, APPEND, and flags."""
+
+    def __init__(self):
+        super().__init__()
+        self.folders = {"INBOX.Purdue": {}, "Junk": {}}
+        self.selected = None
+        self.readonly = True
+        self.moves = []
+        self.move_supported = True
+        self.fail_move = False
+
+    def select(self, folder, readonly=False):
+        self.selected = folder.strip('"')
+        self.readonly = readonly
+        return "OK", [str(len(self.folders[self.selected])).encode()]
+
+    def capability(self):
+        return "OK", [
+            b"IMAP4rev1 UIDPLUS MOVE" if self.move_supported else b"IMAP4rev1"
+        ]
+
+    def uid(self, command, *args):
+        folder = self.folders[self.selected]
+        if command == "search":
+            uids = [
+                uid
+                for uid, (_, deleted) in folder.items()
+                if args[-1] != "UNDELETED" or not deleted
+            ]
+            return "OK", [" ".join(uids).encode()]
+        if command == "fetch":
+            return "OK", [
+                (f"1 (UID {uid} BODY[HEADER] {{0}}".encode(), folder[uid][0])
+                for uid in args[0].split(",")
+                if uid in folder
+            ]
+        if command == "move":
+            assert not self.readonly
+            if self.fail_move:
+                return "NO", [b"move refused"]
+            target = self.folders[args[1].strip('"')]
+            for uid in args[0].split(","):
+                self.moves.append((self.selected, uid, args[1]))
+                target[str(max(map(int, target), default=0) + 1)] = folder.pop(uid)
+            return "OK", [b"moved"]
+        raise AssertionError(command)
+
+    def append(self, folder, flags, date, raw):
+        target = self.folders[folder.strip('"')]
+        target[str(max(map(int, target), default=0) + 1)] = (raw, False)
+        return super().append(folder, flags, date, raw)
+
+
 class MirrorMailTest(unittest.TestCase):
     def setUp(self) -> None:
         self.root = Path(self.enterContext(tempfile.TemporaryDirectory()))
@@ -42,14 +96,24 @@ class MirrorMailTest(unittest.TestCase):
     def test_runtime_password_file_does_not_invoke_vault(self) -> None:
         password = self.root / "password"
         password.write_text("test-only-password\n")
-        with mock.patch.dict(mirror_mail.os.environ, {"MIRROR_MAIL_PASSWORD_FILE": str(password)}), mock.patch.object(mirror_mail.subprocess, "run") as run:
+        with (
+            mock.patch.dict(
+                mirror_mail.os.environ, {"MIRROR_MAIL_PASSWORD_FILE": str(password)}
+            ),
+            mock.patch.object(mirror_mail.subprocess, "run") as run,
+        ):
             self.assertEqual(mirror_mail.get_password(), "test-only-password")
             run.assert_not_called()
 
     def test_empty_runtime_password_file_fails_closed(self) -> None:
         password = self.root / "password"
         password.write_text("")
-        with mock.patch.dict(mirror_mail.os.environ, {"MIRROR_MAIL_PASSWORD_FILE": str(password)}), mock.patch.object(mirror_mail.subprocess, "run") as run:
+        with (
+            mock.patch.dict(
+                mirror_mail.os.environ, {"MIRROR_MAIL_PASSWORD_FILE": str(password)}
+            ),
+            mock.patch.object(mirror_mail.subprocess, "run") as run,
+        ):
             with self.assertRaises(RuntimeError):
                 mirror_mail.get_password()
             run.assert_not_called()
@@ -329,6 +393,200 @@ class MirrorMailTest(unittest.TestCase):
                 "mid:remote@example.com",
             },
         )
+
+    def purdue_config(self):
+        root = self.root / "purdue"
+        root.mkdir()
+        return mirror_mail.replace(mirror_mail.MIRRORS["purdue"], source_roots=(root,))
+
+    def source_message(self, config, folder, name, headers=b"", body=b"body"):
+        path = config.source_roots[0] / folder / "cur" / f"{name}:2,S"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        raw = (
+            f"Message-ID: <{name}@example.com>\r\n".encode() + headers + b"\r\n" + body
+        )
+        path.write_bytes(raw)
+        return raw
+
+    def test_purdue_junk_folder_bypasses_archive_but_stale_headers_do_not(self):
+        config = self.purdue_config()
+        good = self.source_message(config, "Inbox", "normal")
+        bad = self.source_message(config, "Junk Email", "junk-with-no-headers")
+        flagged = self.source_message(
+            config, "Inbox", "flagged", b"X-MS-Exchange-Organization-SCL: 9\r\n"
+        )
+        connection = RoutingConnection()
+        result = mirror_mail.mirror_account(connection, config, 500, self.history)
+        self.assertEqual(result.appended, 3)
+        self.assertEqual(result.junk_appended, 1)
+        self.assertEqual(
+            {r for r, _ in connection.folders["INBOX.Purdue"].values()}, {good, flagged}
+        )
+        self.assertEqual({r for r, _ in connection.folders["Junk"].values()}, {bad})
+        self.assertEqual(
+            mirror_mail.mirror_account(connection, config, 500, self.history).appended,
+            0,
+        )
+
+    def test_junk_wins_over_larger_normal_duplicate(self):
+        config = self.purdue_config()
+        self.source_message(config, "Junk Email", "duplicate")
+        self.source_message(config, "Inbox", "duplicate", body=b"larger body")
+        connection = RoutingConnection()
+        result = mirror_mail.mirror_account(connection, config, 500, self.history)
+        self.assertEqual(
+            (result.appended, result.duplicates, result.junk_appended), (1, 1, 1)
+        )
+        self.assertEqual(connection.folders["INBOX.Purdue"], {})
+
+    def test_existing_purdue_junk_is_moved_and_not_reappended(self):
+        config = self.purdue_config()
+        raw = self.source_message(config, "Junk Email", "misfiled")
+        connection = RoutingConnection()
+        connection.folders["INBOX.Purdue"]["41"] = (raw, False)
+        result = mirror_mail.mirror_account(connection, config, 500, self.history)
+        self.assertEqual((result.moved_to_junk, result.appended), (1, 0))
+        self.assertEqual(connection.moves, [("INBOX.Purdue", "41", '"Junk"')])
+        self.assertEqual(connection.folders["INBOX.Purdue"], {})
+        self.assertEqual(
+            mirror_mail.mirror_account(
+                connection, config, 500, self.history
+            ).moved_to_junk,
+            0,
+        )
+        # Deleting the moved copy does not resurrect it in either folder.
+        connection.folders["Junk"].clear()
+        result = mirror_mail.mirror_account(connection, config, 500, self.history)
+        self.assertEqual(result.appended, 0)
+
+    def test_later_source_junk_classification_moves_prior_archive_import(self):
+        config = self.purdue_config()
+        self.source_message(config, "Inbox", "later-junk")
+        connection = RoutingConnection()
+        first = mirror_mail.mirror_account(connection, config, 500, self.history)
+        self.assertEqual((first.appended, first.junk_appended), (1, 0))
+        self.source_message(config, "Junk Email", "later-junk")
+        second = mirror_mail.mirror_account(connection, config, 500, self.history)
+        self.assertEqual((second.appended, second.moved_to_junk), (0, 1))
+        self.assertEqual(connection.folders["INBOX.Purdue"], {})
+
+    def test_failed_junk_append_is_retryable_and_never_goes_to_archive(self):
+        config = self.purdue_config()
+        self.source_message(config, "Junk Email", "retry")
+        connection = RoutingConnection()
+        with mock.patch.object(connection, "append", return_value=("NO", [b"failure"])):
+            first = mirror_mail.mirror_account(connection, config, 500, self.history)
+        self.assertEqual(len(first.errors), 1)
+        self.assertNotIn("mid:retry@example.com", self.history.keys(config))
+        second = mirror_mail.mirror_account(connection, config, 500, self.history)
+        self.assertEqual(second.junk_appended, 1)
+        self.assertEqual(connection.folders["INBOX.Purdue"], {})
+
+    def test_legacy_fallback_and_duplicate_archive_copies_are_moved(self):
+        config = self.purdue_config()
+        folder = config.source_roots[0] / "Junk Email/child/new"
+        folder.mkdir(parents=True)
+        raw = b"Subject: no id\r\n\r\nbody"
+        (folder / "message").write_bytes(raw)
+        key = mirror_mail.archive_key(raw, None)
+        archived = mirror_mail.add_fallback_key(raw, key)
+        connection = RoutingConnection()
+        connection.folders["INBOX.Purdue"] = {
+            "1": (archived, False),
+            "2": (archived, False),
+        }
+        result = mirror_mail.mirror_account(connection, config, 500, self.history)
+        self.assertEqual((result.moved_to_junk, result.appended), (2, 0))
+        self.assertEqual(connection.folders["INBOX.Purdue"], {})
+        self.assertIn(key, self.history.keys(config))
+
+    def test_stale_headers_and_pending_deletions_are_not_moved(self):
+        config = self.purdue_config()
+        self.source_message(config, "Junk Email", "pending")
+        connection = RoutingConnection()
+        connection.folders["INBOX.Purdue"] = {
+            "1": (
+                b"Message-ID: <old@example.com>\r\nX-Spam-Flag: YES\r\n\r\nbody",
+                False,
+            ),
+            "2": (
+                b"Message-ID: <good@example.com>\r\nX-MS-Exchange-Organization-SCL: 1\r\n\r\nbody",
+                False,
+            ),
+            "3": (
+                b"Message-ID: <pending@example.com>\r\nX-Spam-Flag: YES\r\n\r\nbody",
+                True,
+            ),
+        }
+        result = mirror_mail.mirror_account(connection, config, 500, self.history)
+        self.assertEqual((result.moved_to_junk, result.appended), (0, 0))
+        self.assertEqual(set(connection.folders["INBOX.Purdue"]), {"1", "2", "3"})
+
+    def test_previously_deleted_archive_junk_stays_deleted(self):
+        config = self.purdue_config()
+        self.source_message(config, "Junk Email", "deleted")
+        self.history.remember(config, {"mid:deleted@example.com"})
+        connection = RoutingConnection()
+        result = mirror_mail.mirror_account(connection, config, 500, self.history)
+        self.assertEqual(result.appended, 0)
+        self.assertEqual(result.previously_imported, 1)
+
+    def test_junk_receipt_prevents_later_archive_resurrection(self):
+        config = self.purdue_config()
+        self.source_message(config, "Junk Email", "classified")
+        connection = RoutingConnection()
+        mirror_mail.mirror_account(connection, config, 500, self.history)
+        source = next((config.source_roots[0] / "Junk Email/cur").iterdir())
+        self.source_message(config, "Inbox", "classified")
+        source.unlink()
+        connection.folders["Junk"].clear()
+        self.assertEqual(
+            mirror_mail.mirror_account(connection, config, 500, self.history).appended,
+            0,
+        )
+
+    def test_junk_without_message_id_uses_fallback_key(self):
+        config = self.purdue_config()
+        folder = config.source_roots[0] / "Junk Email/new"
+        folder.mkdir(parents=True)
+        (folder / "missing-id").write_bytes(b"Subject: no id\r\n\r\nbody")
+        connection = RoutingConnection()
+        result = mirror_mail.mirror_account(connection, config, 500, self.history)
+        self.assertEqual(result.junk_appended, 1)
+        self.assertIn(b"X-Quasimorphic-Archive-Key: sha256:", connection.appended[0][3])
+        self.assertEqual(
+            mirror_mail.mirror_account(connection, config, 500, self.history).appended,
+            0,
+        )
+
+    def test_unsafe_or_failed_move_never_falls_back_to_expunge(self):
+        for unsupported in (True, False):
+            with self.subTest(unsupported=unsupported):
+                config = mirror_mail.replace(
+                    mirror_mail.MIRRORS["purdue"], source_roots=(self.root,)
+                )
+                self.source_message(config, "Junk Email", "bad")
+                connection = RoutingConnection()
+                connection.move_supported = not unsupported
+                connection.fail_move = not unsupported
+                connection.folders["INBOX.Purdue"]["1"] = (
+                    b"Message-ID: <bad@example.com>\r\nX-Spam-Flag: YES\r\n\r\nbody",
+                    False,
+                )
+                with self.assertRaises(RuntimeError):
+                    mirror_mail.mirror_account(connection, config, 500, self.history)
+                self.assertEqual(len(connection.folders["INBOX.Purdue"]), 1)
+                self.assertEqual(connection.folders["Junk"], {})
+
+    def test_purdue_missing_junk_receipts_fails_before_moves(self):
+        config = self.purdue_config()
+        connection = RoutingConnection()
+        with mirror_mail.ImportHistory(self.root / "unseeded.sqlite3") as history:
+            history.remember(config, set(), initialize=True)
+            with self.assertRaisesRegex(RuntimeError, "uninitialized"):
+                mirror_mail.mirror_account(connection, config, 500, history)
+        self.assertEqual(connection.moves, [])
+        self.assertEqual(connection.appended, [])
 
     def test_mxroute_channels_both_propagate_deletions(self):
         text = SCRIPT.with_name("mbsyncrc").read_text()

@@ -2,8 +2,9 @@
 """Archive synchronized external Maildirs into searchable MXroute folders.
 
 Run this after mbsync has downloaded each source account. Messages from every
-synchronized folder are flattened into one MXroute folder per account and
-stored as complete RFC 822 messages, so MXroute can search their subjects and
+synchronized folder are flattened into one MXroute folder per account, except
+Purdue junk, which goes to native Junk (including already imported copies).
+Messages are stored as complete RFC 822 messages, so MXroute can search their subjects and
 bodies. Copies are deduplicated by Message-ID. Messages without a Message-ID
 receive a deterministic archive-key header so repeated runs remain idempotent.
 Persistent import receipts prevent later moves/deletions on MXroute from being
@@ -24,7 +25,7 @@ import sqlite3
 import ssl
 import subprocess
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from email.parser import BytesHeaderParser
 from pathlib import Path
 
@@ -47,6 +48,7 @@ class MirrorConfig:
     label: str
     source_roots: tuple[Path, ...]
     destination_folder: str
+    route_junk: bool = False
 
 
 MIRRORS = {
@@ -55,6 +57,7 @@ MIRRORS = {
         label="Purdue",
         source_roots=(Path.home() / ".mail" / "purdue",),
         destination_folder="INBOX.Purdue",
+        route_junk=True,
     ),
     "broad": MirrorConfig(
         name="broad",
@@ -80,6 +83,7 @@ class Candidate:
     size: int
     key: str
     message_id: str | None
+    junk: bool = False
 
 
 @dataclass(frozen=True)
@@ -92,6 +96,8 @@ class MirrorResult:
     deferred: int
     previously_imported: int
     errors: tuple[tuple[Path, str], ...]
+    junk_appended: int = 0
+    moved_to_junk: int = 0
 
 
 class ImportHistory:
@@ -226,14 +232,22 @@ def local_candidates(
         raw_message_id = headers.get("Message-ID")
         message_id = raw_message_id if normalize_message_id(raw_message_id) else None
         key = archive_key(raw, message_id)
-        candidate = Candidate(path, len(raw), key, message_id)
+        junk_folder = any(
+            "Junk Email" in (root.name, *path.relative_to(root).parts[:-2])
+            for root in source_roots
+            if path.is_relative_to(root)
+        )
+        # Folder membership is authoritative. Spam headers can be stale after
+        # rescue from Junk and have false positives in forwarded archive copies.
+        candidate = Candidate(path, len(raw), key, message_id, junk_folder)
         previous = candidates.get(key)
-        if previous is None or candidate.size > previous.size:
-            if previous is not None:
-                duplicate_count += 1
+        if previous is None:
             candidates[key] = candidate
         else:
             duplicate_count += 1
+            # A junk copy wins classification even if a larger normal copy exists.
+            largest = candidate if candidate.size > previous.size else previous
+            candidates[key] = replace(largest, junk=candidate.junk or previous.junk)
 
     return candidates, duplicate_count
 
@@ -374,19 +388,153 @@ def internal_date(raw: bytes, path: Path) -> str:
     return imaplib.Time2Internaldate(path.stat().st_mtime)
 
 
+def move_purdue_junk(
+    connection: imaplib.IMAP4_SSL,
+    config: MirrorConfig,
+    junk_config: MirrorConfig,
+    junk_keys: set[str],
+    history: ImportHistory,
+) -> int:
+    """Move archive copies of messages currently in Purdue's Junk Email.
+
+    Exclude pending deletions and leave Trash/other user-filed folders alone.
+    Do not classify by stale spam headers, sender, subject, or fuzzy matches.
+    """
+    if not junk_keys:
+        return 0
+    ensure_destination(connection, config.destination_folder)
+    status, data = connection.uid("search", None, "UNDELETED")
+    if status != "OK":
+        raise RuntimeError(
+            f"Cannot search {config.destination_folder}: {status} {data!r}"
+        )
+    uids = (data[0] or b"").split()
+    moves: dict[str, set[str]] = {}
+    parser = BytesHeaderParser()
+    for start in range(0, len(uids), 500):
+        batch = b",".join(uids[start : start + 500]).decode("ascii")
+        status, responses = connection.uid(
+            "fetch",
+            batch,
+            f"(UID BODY.PEEK[HEADER.FIELDS (MESSAGE-ID {ARCHIVE_KEY_HEADER})])",
+        )
+        if status != "OK":
+            raise RuntimeError(f"Cannot inspect {config.destination_folder}: {status}")
+        for response in responses or []:
+            if not isinstance(response, tuple):
+                continue
+            headers = parser.parsebytes(response[1], headersonly=True)
+            key = normalize_message_id(headers.get("Message-ID"))
+            fallback = headers.get(ARCHIVE_KEY_HEADER)
+            keys = {key} if key else set()
+            if fallback:
+                keys.add(fallback.strip().lower())
+            if not keys & junk_keys:
+                continue
+            uid = re.search(rb"\bUID (\d+)\b", response[0])
+            if uid is None:
+                raise RuntimeError("Missing UID in junk header response")
+            moves[uid[1].decode("ascii")] = keys
+
+    if moves:
+        # imaplib's cached capabilities can predate LOGIN; refresh explicitly.
+        status, capabilities = connection.capability()
+        if status != "OK" or b"MOVE" not in b" ".join(capabilities).split():
+            raise RuntimeError(
+                "Server lacks UID MOVE; refusing unsafe COPY/EXPUNGE fallback"
+            )
+        ensure_destination(connection, "Junk")
+        status, data = connection.select(
+            f'"{config.destination_folder}"', readonly=False
+        )
+        if status != "OK":
+            raise RuntimeError(
+                f"Cannot select archive for junk moves: {status} {data!r}"
+            )
+        pending = sorted(moves, key=int)
+        for start in range(0, len(pending), 100):
+            batch = pending[start : start + 100]
+            keys = set().union(*(moves[uid] for uid in batch))
+            # Record archive presence before the move, so interrupted runs cannot
+            # resurrect a copy subsequently removed by the user from Junk.
+            history.remember(config, keys)
+            status, data = connection.uid("move", ",".join(batch), '"Junk"')
+            if status != "OK":
+                raise RuntimeError(f"Cannot move Purdue junk: {status} {data!r}")
+            history.remember(junk_config, keys)
+    return len(moves)
+
+
 def mirror_account(
     connection: imaplib.IMAP4_SSL,
     config: MirrorConfig,
     max_new_messages: int,
     history: ImportHistory,
 ) -> MirrorResult:
-    imported = history.keys(config)
+    history.require_initialized(config)
     missing_roots = [root for root in config.source_roots if not root.is_dir()]
     if missing_roots:
         missing = ", ".join(str(root) for root in missing_roots)
         raise RuntimeError(f"{config.label} source Maildir does not exist: {missing}")
 
     candidates, duplicate_count = local_candidates(config.source_roots)
+    if not config.route_junk:
+        return mirror_candidates(
+            connection, config, candidates, duplicate_count, max_new_messages, history
+        )
+
+    junk_config = replace(
+        config,
+        label=f"{config.label} junk",
+        destination_folder="Junk",
+        route_junk=False,
+    )
+    history.require_initialized(junk_config)
+    junk_keys = {key for key, candidate in candidates.items() if candidate.junk}
+    # Include deletion-marked archive copies before routing, so an unrecorded
+    # pending deletion cannot be mistaken for a new junk import.
+    ensure_destination(connection, config.destination_folder)
+    history.remember(config, remote_keys(connection, config.destination_folder))
+    moved = move_purdue_junk(connection, config, junk_config, junk_keys, history)
+    junk = {key: candidate for key, candidate in candidates.items() if key in junk_keys}
+    normal = {
+        key: candidate for key, candidate in candidates.items() if key not in junk_keys
+    }
+    # A former archive import that is now absent was already moved/deleted by
+    # the user. Changing its classification must not recreate it in Junk.
+    history.remember(junk_config, history.keys(config) & junk_keys)
+    junk_result = mirror_candidates(
+        connection, junk_config, junk, 0, max_new_messages, history
+    )
+    # Never re-import junk into the archive, even if it later leaves source Junk.
+    history.remember(config, history.keys(junk_config) & junk_keys)
+    result = mirror_candidates(
+        connection, config, normal, duplicate_count, max_new_messages, history
+    )
+    return replace(
+        result,
+        scanned=result.scanned + junk_result.scanned,
+        unique=result.unique + junk_result.unique,
+        already_archived=result.already_archived + junk_result.already_archived,
+        previously_imported=result.previously_imported
+        + junk_result.previously_imported,
+        appended=result.appended + junk_result.appended,
+        deferred=result.deferred + junk_result.deferred,
+        errors=result.errors + junk_result.errors,
+        junk_appended=junk_result.appended,
+        moved_to_junk=moved,
+    )
+
+
+def mirror_candidates(
+    connection: imaplib.IMAP4_SSL,
+    config: MirrorConfig,
+    candidates: dict[str, Candidate],
+    duplicate_count: int,
+    max_new_messages: int,
+    history: ImportHistory,
+) -> MirrorResult:
+    imported = history.keys(config)
     ensure_destination(connection, config.destination_folder)
     existing = remote_keys(connection, config.destination_folder)
     history.remember(config, existing)
@@ -445,7 +593,8 @@ def print_result(config: MirrorConfig, result: MirrorResult) -> None:
         f"unique={result.unique} duplicates={result.duplicates} "
         f"already_archived={result.already_archived} "
         f"previously_imported={result.previously_imported} "
-        f"appended={result.appended} deferred={result.deferred} "
+        f"appended={result.appended} junk_appended={result.junk_appended} "
+        f"moved_to_junk={result.moved_to_junk} deferred={result.deferred} "
         f"errors={len(result.errors)}"
     )
     for path, message in result.errors[:10]:
@@ -466,7 +615,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=DEFAULT_MAX_NEW_MESSAGES,
         metavar="COUNT",
         help=(
-            "maximum messages to append per account and run "
+            "maximum messages to append per destination and run "
             f"(default: {DEFAULT_MAX_NEW_MESSAGES})"
         ),
     )
@@ -503,6 +652,14 @@ def main(argv: list[str] | None = None) -> int:
             try:
                 if args.record_existing:
                     count = record_existing(connection, config, history)
+                    if config.route_junk:
+                        record_existing(
+                            connection,
+                            replace(
+                                config, destination_folder="Junk", route_junk=False
+                            ),
+                            history,
+                        )
                     print(
                         f"{config.label} import receipts initialized: keys={count}",
                         flush=True,

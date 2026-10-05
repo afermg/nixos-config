@@ -548,3 +548,35 @@ an accepted graceful shutdown request from any later network observation; it
 does not claim physical power-off solely because SSH becomes unavailable.
 Mac sync, Hindsight relocation and ZFS conversion remain follow-up work in the
 [ix-only roadmap](ROADMAP.md), not shutdown gates.
+
+## Purdue junk routing correction
+
+The archive importer used to flatten Purdue's `Junk Email` into `INBOX.Purdue`.
+It now routes source-Junk members directly to MXroute's native `Junk`, and uses
+UID MOVE to correct matching existing archive copies. Exact Message-ID/archive
+keys are used, not sender/subject guesses or stale spam headers (which were
+also present on legitimate forwarded mail). Source-folder classification wins
+across duplicates. Pending deletions, Trash, and other user-filed folders are
+left alone; receipts prevent deleted imports from being recreated. Purdue's
+original IMAP account remains pull-only.
+
+The updated `ix-mail-sync` package was built natively from this checkout without
+a system switch/reboot. A scoped `~/.local/bin/ix-mail-sync` launcher selects the
+GC-rooted package under `~/.local/state/purdue-junk-fix/package` while the managed
+package is unchanged, then automatically defers to the managed package after
+its next deployment. Remove that launcher after a normal deployment includes
+this change. The private state directory holds the original script, preexisting
+worktree diff, consistent SQLite receipt backup, exact move preview, and sync
+log. No credentials or message headers were added to Git. The live Emacs process
+resolves the new launcher; unrelated editor changes in ix's checkout were kept.
+
+Verification: seven existing copies (six distinct message IDs) were moved to
+Junk, with zero Purdue-junk keys remaining in the archive on either MXroute or
+ix. A second Purdue import appended/moved zero messages, with zero errors or
+deferrals. Previously removed imports were not resurrected. The ordinary full
+sync finished its mbsync and Purdue stages; its unrelated multi-GB Broad scan
+was cleanly interrupted rather than delaying this repair further. A subsequent
+locked, Purdue-only verification and two-mailbox mbsync completed successfully,
+and the live mu4e index was refreshed. All 39 email tests passed locally and on
+ix; 35 ix policy/boot tests passed locally. No full Broad import completion or
+change to automatic sync scheduling is claimed.
