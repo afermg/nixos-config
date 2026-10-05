@@ -131,6 +131,7 @@ in
     ../../modules/shared/config/pi/pi.nix
     ../../modules/shared/config/hindsight/client.nix
     ../../modules/shared/config/syncthing/receiver.nix
+    ../../modules/shared/config/ssh/ssh.nix
     ../../modules/shared/config/email/rbw.nix
     ../../modules/shared/config/harper/harper.nix
   ];

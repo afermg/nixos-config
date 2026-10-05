@@ -37,27 +37,6 @@ in
     # };
   };
 
-  ssh = {
-    enable = true;
-    enableDefaultConfig = false;
-    # includes = [
-    #   (lib.mkIf pkgs.stdenv.hostPlatform.isLinux
-    #     "/home/${user}/.ssh/config_external"
-    #   )
-    #   (lib.mkIf pkgs.stdenv.hostPlatform.isDarwin
-    #     "/Users/${user}/.ssh/config_external"
-    #   )
-    # ];
-    settings = {
-      "*".ForwardAgent = true;
-      "github.com" = {
-        IdentitiesOnly = true;
-        IdentityFile =
-          if pkgs.stdenv.hostPlatform.isLinux then
-            "/home/${user}/.ssh/id_ed25519"
-          else
-            "/Users/${user}/.ssh/id_ed25519";
-      };
-    };
-  };
+  # SSH is configured by the common home profile's config/ssh/ssh.nix import,
+  # so Darwin, Moby, and Oppy use the same trusted-host forwarding policy.
 }
