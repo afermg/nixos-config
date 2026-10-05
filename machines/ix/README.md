@@ -275,18 +275,23 @@ sudo systemctl restart podman-hindsight-api.service
 `pi-msg` is configured for ix with a separate `pi-msg-ix.age` secret and
 Tailscale-only ejabberd on `ix.tail5e510f.ts.net`. The moby and oppy client
 profiles also use ix-domain secrets, so their bots connect as `pi@ix...` and
-`pi-oppy@ix...` instead of using moby as the relay. The bot accounts have been
-registered on ix; the ix user service is still skipped until the human phone
-account password is chosen and the account-registration marker exists. After
-deployment and after choosing the phone account password, run:
+`pi-oppy@ix...` instead of using moby as the relay. The ix bot now has its own
+address **`ix@ix.tail5e510f.ts.net`**; the phone owner remains
+`alan@ix.tail5e510f.ts.net`. Phone login and bot connectivity were verified on
+2026-10-02. The account-readiness marker is persistent, the bot is enabled, and
+user lingering starts it without an SSH login.
+
+See [PI_MSG_IDENTITY.md](PI_MSG_IDENTITY.md) for the scoped, reboot-persistent
+identity activation, rollback, and required reconciliation of the temporary
+service overrides after the next normal Nix deployment. Unrelated pending
+Emacs/email changes were not deployed. The old `pi` account is retained for moby.
+Do not rerun registration merely to add the new bot contact in Conversations.
 
 ```bash
-pi-msg-register-accounts
 systemctl --user status pi-msg.service
 ```
 
-Keep the moby relay secret as rollback until phone and bot logins are verified
-against ix.
+Keep the moby relay secret as rollback until its client migration is verified.
 
 `ix-state-backup.timer` creates weekly encrypted archives under
 `~/.local/share/syncthing/ix-backups/ix/`. These archives cover ix-owned Pi

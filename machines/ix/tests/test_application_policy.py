@@ -101,6 +101,7 @@ class ApplicationPolicyTests(unittest.TestCase):
         self.assertIn('age.identityPaths = [ "/home/amunoz/.ssh/id_ed25519_github_ix" ];', home)
         self.assertIn('domain = "ix.tail5e510f.ts.net";', home + relay)
         self.assertIn('secretFile = ../../secrets/pi-msg-ix.age;', home)
+        self.assertIn('botUsername = "ix";', home)
         self.assertIn("registerLocalAccounts = true;", home)
         self.assertIn("requireAccountsReadyMarker = true;", home)
         self.assertIn('tailscaleIPv4 = "100.114.49.10";', relay)

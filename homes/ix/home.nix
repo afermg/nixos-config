@@ -46,6 +46,7 @@
   services.pi-msg = {
     enable = true;
     domain = "ix.tail5e510f.ts.net";
+    botUsername = "ix";
     secretFile = ../../secrets/pi-msg-ix.age;
     registerLocalAccounts = true;
     requireAccountsReadyMarker = true;
