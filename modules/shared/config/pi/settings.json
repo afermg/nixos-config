@@ -1,6 +1,6 @@
 {
   "defaultProvider": "openai-codex",
-  "defaultModel": "gpt-5.5",
+  "defaultModel": "gpt-6-astra",
   "defaultThinkingLevel": "xhigh",
   "enabledModels": [
     "openai-codex/gpt-6-astra",
