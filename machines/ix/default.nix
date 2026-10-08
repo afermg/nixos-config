@@ -32,10 +32,10 @@
   services.fstrim.enable = false; # WD bridge rejected WRITE SAME/DISCARD in testing.
   services.journald.settings.Journal.SystemMaxUse = "256M";
 
-  programs.fish.enable = true;
+  programs.fish.enable = false;
   users.users.amunoz = {
     isNormalUser = true;
-    shell = pkgs.fish;
+    shell = pkgs.bashInteractive;
     description = "Alán F. Muñoz";
     extraGroups = [ "wheel" ];
     linger = true;

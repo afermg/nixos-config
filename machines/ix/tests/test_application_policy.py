@@ -13,10 +13,27 @@ class ApplicationPolicyTests(unittest.TestCase):
     def test_ix_identity_and_dns_transport(self):
         host = (ROOT / "machines/ix/default.nix").read_text()
         self.assertIn('networking.hostName = "ix";', host)
-        self.assertIn('shell = pkgs.fish;', host)
+        self.assertIn('shell = pkgs.bashInteractive;', host)
+        self.assertIn('programs.fish.enable = false;', host)
         sync = (HOME / "syncthing.nix").read_text()
         self.assertNotRegex(sync, r'tcp://(?:100|192|10|172)\.')
         self.assertIn('moby.tail5e510f.ts.net', sync)
+
+    def test_ix_shell_has_no_fish_plugins_or_atuin_sync(self):
+        home = (HOME / 'home.nix').read_text()
+        apps = (HOME / 'applications.nix').read_text()
+        tools = (HOME / 'editor-tools.nix').read_text()
+        self.assertIn('programs.bash.enable = true;', home)
+        self.assertIn('programs.fish.enable = false;', home)
+        self.assertIn('programs.atuin.enable = false;', home)
+        self.assertNotIn('config/atuin/atuin.nix', home)
+        self.assertNotIn('config/fish/fish.nix', apps)
+        self.assertNotRegex(tools, r'(?m)^\s*fish\s*$')
+
+    def test_ghostel_can_use_bash_without_fish(self):
+        shared = (ROOT / 'modules/shared/config/emacs/config.org').read_text()
+        self.assertRegex(shared, r'\(or \(executable-find "fish"\)\s*\(executable-find "bash"\)')
+        self.assertNotIn('Ghostel requires fish, but fish is not on Emacs exec-path', shared)
 
     def test_device_id_is_not_in_documentation(self):
         for path in (ROOT / "machines/ix").glob("*.md"):
@@ -213,6 +230,29 @@ class ApplicationPolicyTests(unittest.TestCase):
         self.assertNotIn("ConditionPathExists", text)
         self.assertNotIn("raspi4-ha-check", text)
         self.assertIn("firewall.interfaces.tailscale0.allowedTCPPorts", text)
+
+    def test_home_assistant_pins_matter_time_sync(self):
+        text = (ROOT / "machines/ix/services.nix").read_text()
+        self.assertIn("pkgs.buildHomeAssistantComponent", text)
+        self.assertIn('domain = "matter_time_sync";', text)
+        self.assertIn('version = "2.2.2";', text)
+        self.assertIn('rev = "e74b7d7c339c476a87eb2778c613f93a22f9f54b";', text)
+        self.assertIn('hash = "sha256-e5XxmIE/QWDJK9cVZZ3aFksXzLf+PxPIAbODhcy7RAw=";', text)
+        self.assertIn("pkgs.home-assistant.python3Packages.aiohttp", text)
+        self.assertNotRegex(text, r'allowedTCPPorts\s*=\s*\[[^]]*\b5580\b')
+
+    def test_home_assistant_records_electrical_measurements(self):
+        text = (ROOT / "machines/ix/services.nix").read_text()
+        self.assertIn("energy = { };", text)
+        self.assertIn("history = { };", text)
+        recorder = re.search(r'recorder\s*=\s*\{\s*include.entities\s*=\s*\[([^]]*)\]', text)
+        self.assertIsNotNone(recorder)
+        self.assertEqual(re.findall(r'"([^"]+)"', recorder.group(1)), [
+            "sensor.kitchen_grillplats_plug_fridge_energy",
+            "sensor.kitchen_grillplats_plug_fridge_power",
+        ])
+        self.assertNotIn('"sensor.*power*"', text)
+        self.assertNotRegex(text, r"(?m)^\s*default_config\s*=")
 
     def test_home_assistant_explicitly_enables_companion_app(self):
         text = (ROOT / "machines/ix/services.nix").read_text()

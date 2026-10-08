@@ -3,8 +3,8 @@
 See [DEBRIEF.md](DEBRIEF.md) for the final application/data handoff and deferred
 items, and [MAINTENANCE_LOG.md](MAINTENANCE_LOG.md) for the deployment history and troubleshooting.
 The server hostname and flake entry are **ix**. Its independent Home Manager
-profile in `homes/ix/home.nix` reuses the personal Emacs and Fish configuration
-without importing the desktop home. Future work is scoped in [ROADMAP.md](ROADMAP.md).
+profile in `homes/ix/home.nix` reuses the personal Emacs configuration and
+uses Bash without importing the desktop home. Future work is scoped in [ROADMAP.md](ROADMAP.md).
 
 ## Storage and access
 
@@ -166,8 +166,7 @@ FAT reduces update hazards but does not make the filesystem immune to power loss
 
 ## Everyday use
 
-The profile uses Fish with the shared Pure, autopair, fishbang,
-fish-you-should-use, sponge, and async-prompt plugins. It includes Git/LFS,
+The declared profile uses Bash, with Atuin and Fish disabled. It includes Git/LFS,
 the shared Emacs/mu4e configuration, Node/npm, Pi, and Syncthing. Run `emacsclient -t` (`M-x mu4e` for mail, `M-x ix-pi` for Pi),
 or use `pi` directly. npm global installs use `~/.local`, not the Nix store.
 Mail credentials are local runtime files; no moby password-manager connection
@@ -214,6 +213,38 @@ its UI and add their Nix dependencies explicitly (`met` and `roborock` are
 included). HA 2026.9 owns accepted HTTP settings in `.storage/http`; YAML is
 only the initial migration input, so verify the actual listener after changing
 settings.
+
+### ALPSTUGA clock and electrical measurements
+
+[MATTER_TIME_SYNC.md](MATTER_TIME_SYNC.md) documents the pinned ALPSTUGA clock
+integration and its hourly, device-filtered synchronization.
+
+The Energy dashboard and History are enabled. The deployed Recorder policy
+includes only the GRILLPLATS fridge plug's native W and kWh sensors. Recording
+the Moby/electronics plug meters remains a separate, uncommitted change.
+Phone battery/health and unrelated temperature sensors are excluded. Extend
+`recorder.include.entities` when adding another metering appliance. Do not use
+broad `*power*` globs: the Moto G Power phone's entity IDs also contain that word.
+Enable disabled appliance measurement entities first; Recorder cannot create
+measurements that hardware or its integration does not expose.
+
+Use cumulative energy (`kWh`/`Wh`, compatible energy device/state classes) under
+**Energy → Individual devices**. Instantaneous power (`W`) alone is not a
+cumulative energy counter. New installations need time to accumulate statistics;
+no history from before recording was enabled can be recovered.
+
+### Motion lighting and bedroom scene
+
+[LIGHTING.md](LIGHTING.md) documents the MYGGSPRAY automation: the living-room
+and kitchen bulbs turn on below 50 lux and turn off after 10 minutes without
+motion. The second MYGGSPRAY controls a warm, 10% bathroom night light with a
+five-minute timeout. It also documents the persistent **Bedroom - Medium
+illumination** scene (both bedroom bulbs at 50%, without changing their color
+settings), and the **Room lighting** dashboard with proportional brightness
+sliders, one living/kitchen control with separate HA areas, and per-area manual
+ownership. Bedroom-only commands leave bathroom/living motion active.
+
+See [XMPP.md](XMPP.md) for XMPP recovery, bounded restarts and health checks.
 
 ### Home Assistant phone / home-LAN access
 

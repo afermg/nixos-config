@@ -1,0 +1,43 @@
+[
+  {
+    "id": "bedroom_medium_illumination",
+    "name": "Bedroom - Medium illumination",
+    "icon": "mdi:bed",
+    "entities": {
+      "light.bedroom_matter_device": {"state": "on", "brightness": 128},
+      "light.bedroom_kajplats_1100lm": {"state": "on", "brightness": 128}
+    }
+  },
+  {
+    "id": "living_kitchen_only",
+    "name": "Living kitchen only",
+    "icon": "mdi:sofa",
+    "entities": {
+      "light.bedroom_matter_device": {"state": "off"},
+      "light.bedroom_kajplats_1100lm": {"state": "off"},
+      "light.kajplats_e26_ws_globe_1600lm": {"state": "on", "brightness": 204},
+      "light.living_room_kajplats_e26_living_room_1100lm": {"state": "on", "brightness": 204},
+      "light.kitchen_kajplats_e26_kitchen_1100lm": {"state": "on", "brightness": 128},
+      "light.bathroom_kajplats_e26_1100lm_bathroom_2": {"state": "off"}
+    }
+  },
+  {
+    "id": "bedroom_full_illumination",
+    "name": "Bedroom - Full illumination",
+    "icon": "mdi:bed",
+    "entities": {
+      "light.bedroom_matter_device": {"state": "on", "brightness": 255},
+      "light.bedroom_kajplats_1100lm": {"state": "on", "brightness": 255}
+    }
+  },
+  {
+    "id": "living_kitchen_medium_illumination",
+    "name": "Living kitchen - Medium illumination",
+    "icon": "mdi:sofa",
+    "entities": {
+      "light.kajplats_e26_ws_globe_1600lm": {"state": "on", "brightness": 128},
+      "light.living_room_kajplats_e26_living_room_1100lm": {"state": "on", "brightness": 128},
+      "light.kitchen_kajplats_e26_kitchen_1100lm": {"state": "on", "brightness": 128}
+    }
+  }
+]

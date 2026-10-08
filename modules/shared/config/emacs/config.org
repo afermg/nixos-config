@@ -3113,7 +3113,8 @@ reserved for Magit.
     ;; Keep the stable profile symlink instead of a generation-specific store path.
     (setq ghostel-shell
           (or (executable-find "fish")
-              (user-error "Ghostel requires fish, but fish is not on Emacs exec-path")))
+              (executable-find "bash")
+              (user-error "Ghostel requires an interactive shell on Emacs exec-path")))
     (when (eq system-type 'darwin)
       ;; Avoid /usr/bin/login -f; it fails as "Login incorrect" when macOS
       ;; account/session lookup cannot prove the daemon is already this user.

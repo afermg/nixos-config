@@ -16,6 +16,8 @@
   };
   programs.home-manager.enable = true;
   programs.bash.enable = true;
+  programs.fish.enable = false;
+  programs.atuin.enable = false;
   # Git's config is read-only; declare the helper instead of gh auth setup-git.
   # Leave gh.hosts unset so login credentials stay in private runtime state.
   programs.gh = {
