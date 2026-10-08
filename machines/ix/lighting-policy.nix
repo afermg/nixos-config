@@ -15,6 +15,11 @@
       manual = "input_boolean.lighting_manual_living_kitchen";
       automation = "automation.myggspray_living_room_and_kitchen_when_dark";
       active = "input_boolean.myggspray_lighting_active";
+      motion = "binary_sensor.myggspray_wrlss_mtn_sensor_occupancy";
+      illuminance = "sensor.myggspray_wrlss_mtn_sensor_illuminance";
+      darkLux = 50;
+      idleMinutes = 10;
+      turnOnData = { };
       lights = [
         "light.kajplats_e26_ws_globe_1600lm"
         "light.living_room_kajplats_e26_living_room_1100lm"
@@ -26,6 +31,11 @@
       manual = "input_boolean.lighting_manual_bathroom";
       automation = "automation.myggspray_bathroom_night_light";
       active = "input_boolean.myggspray_bathroom_lighting_active";
+      motion = "binary_sensor.myggspray_wrlss_mtn_sensor_occupancy_2";
+      illuminance = "sensor.myggspray_wrlss_mtn_sensor_illuminance_2";
+      darkLux = 50;
+      idleMinutes = 5;
+      turnOnData = { brightness_pct = 10; color_temp_kelvin = 2700; };
       lights = [ "light.bathroom_kajplats_e26_1100lm_bathroom_2" ];
     };
   };

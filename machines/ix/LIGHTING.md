@@ -17,7 +17,8 @@ Commands never include smart-plug outlets, appliances or ix. Brightness changes
 only currently lit, available, dimmable bulbs, preserving color and relative
 brightness. A common multiplier is capped before rounding so the brightest bulb
 cannot exceed 255; individual bulbs are not clipped independently. Off bulbs
-stay off. At the shared maximum, Brighter makes no further increase.
+stay off unless occupied darkness requires automatic lighting in that area.
+At the shared maximum, Brighter makes no further increase.
 
 Physical button behavior has not been exercised by the deployment tests. The
 current registrations are Matter nodes **23 and 24**, both available at the
@@ -34,39 +35,39 @@ Only fresh `multi_press_1`, `multi_press_2` and `long_press` state events are
 accepted. Initial, restored, stale, repeated-timestamp, unsupported multi-press
 and long-release events do not execute lighting commands.
 
-## Manual control and resume
+## Motion priority, manual control and resume
 
-Manual ownership is **per motion-controlled area**, based on the actual lamps
-being commanded, not the scene's name. Bedroom-only actions do not pause either
-motion sensor. Living/kitchen commands pause only that combined area; bathroom
-commands pause only the bathroom. A scene with explicit OFF targets in another
-area also takes manual control there. All-six-off intentionally pauses both.
-Global brightness commands pause only areas containing lamps that are actually
-lit and adjusted. Invalid/empty/no-lit commands never acquire ownership.
+**Occupied darkness wins immediately**, including while occupancy stays on.
+A scene, room slider or All lights off cannot hold a motion-controlled area off
+when its sensor reports occupancy and illuminance below50 lux. No new motion
+transition, timer or explicit Resume is required. Bedroom has no motion rule;
+bedroom-only commands do not change living/kitchen or bathroom ownership.
 
-For each affected area, the shared router sets its persistent manual helper,
-stops only that area's in-flight/queued motion actions, clears its ownership,
-and immediately re-enables its automation. The automation stays enabled, but its
-manual condition blocks automatic actions until resumed. Unaffected automations
-and ownership are untouched. Both motion and BILRESA automations start enabled;
-manual operations never target the BILRESA automation for disabling.
+One shared queue serializes motion and wrapped manual operations. After every
+manual command it reevaluates only the affected motion areas using current
+sensor values. Eligible motion clears that area's manual flag, claims automatic
+ownership and restores lighting. Neither motion automation nor BILRESA is ever
+disabled by manual control. Scenes retain their editable definitions; priority
+changes the resulting lamp state, not the saved scene.
 
-The helpers are `input_boolean.lighting_manual_living_kitchen` and
-`input_boolean.lighting_manual_bathroom`; no initial values, so pauses survive
-restarts. The old `lighting_manual_override` entity is retained for identity
-compatibility, explicitly marked unused, and never gates motion.
+Native scene/light requests can complete after their service-event listener.
+Targeted lamp-state/attribute triggers close that race, including direct device
+reports. Already-correct reports are ignored; bathroom brightness/temperature
+checks tolerate Matter rounding to avoid feedback. No broad sensor-state
+listener, polling-based activation or added turn-on delay is used.
 
-**Resume motion here** clears only that area's pause and reevaluates its current
-occupancy/darkness. **Resume automatic lighting** or top long-press resumes both.
-`script.lighting_resume_automatic` accepts an optional `room` argument. No added
-motion turn-on delay; resume does not blindly turn every lamp on or off.
+Outside occupied darkness, manual ownership remains scoped to affected lamps,
+including explicit OFF members of a scene. Unaffected rooms, appliance plugs
+and unavailable/unknown sensors cannot acquire automatic priority. The persistent
+helpers `input_boolean.lighting_manual_living_kitchen` and
+`input_boolean.lighting_manual_bathroom` apply only until resumed or dark occupancy
+wins. The legacy `lighting_manual_override` remains unused for compatibility.
 
-Native safe `scene.turn_on` requests and direct human `light.turn_on`, `turn_off`
-or `toggle` requests also acquire scoped ownership. Entity, area, device and
-label targets are restricted to the known lamps. The light listener requires a
-human user context: automatic motion light calls cannot pause themselves. These
-listeners run alongside native requests; wrapped controls guarantee pause before
-the lamp command. Neither listens to every sensor-state update.
+**Resume motion here** clears just that area's manual ownership; top long-press
+or **Resume automatic lighting** resumes both. Resume does not blindly toggle
+all lamps. Native human light calls resolve entity/area/device/label targets
+through the six-lamp allowlist; automatic calls cannot feed back into manual
+ownership. Invalid/empty commands do nothing.
 
 All dashboard/button manual operations share a serialized queue. The dashboard
 has **Bedroom**, **Living room + kitchen**, and **Bathroom** controls. Living room
@@ -82,19 +83,25 @@ Existing script calls using `living_room` or `kitchen` remain compatible, while
 selectors/dashboard expose one combined control. Adding a new lamp still requires
 explicitly extending the allowlist; appliance plugs cannot enter the group.
 
-### Brightness sliders
+### Slider-only room controls
 
-Each control now has a native HA brightness slider instead of Dimmer/Brighter
-buttons, with separate On/Off buttons retained. Three template light entities
-(`light.ix_<room>_lighting_control`) are UI adapters, not physical devices or
-members of the allowlist. They derive their state/level from the real lamps,
-so buttons, scenes and motion are reflected without feedback/state-sync loops.
+Each room has **one0–100% slider**, with no toggle or separate On/Off buttons.
+Zero switches available room lamps off. Raising an entirely off room turns its
+available lamps on at the requested level. Otherwise one common gain scales
+only lit lamps, preserving colors and relative balance. Remote short presses
+still scale lit lamps only; they do not wake an entirely off room.
 
-The slider represents the brightest lit lamp, scaling all lit room lamps with
-one gain while preserving color and relative balance. Off lamps stay off; use
-**On** first if the whole room is off. The remote's short-press brighter/dimmer
-behavior remains unchanged. Room membership still comes from the separate HA
-area assignments.
+The displayed template numbers (`number.ix_<room>_lighting_level`) derive their
+value from the brightest lit lamp. A number slider is used because HA's native
+light-brightness tile feature stops at1%, not zero. Existing
+`light.ix_<room>_lighting_control` adapters remain for compatibility. Neither
+adapter type is a physical device or an allowlist member. There is no state-sync
+write loop; scenes, buttons and motion are reflected from actual lamp state.
+
+Motion priority can immediately move the slider back: living/kitchen must be
+on when dark and occupied; bathroom must be at its10%/2700K night setting.
+Off, unavailable and unlisted lamps are not included in proportional adjustments
+except when the separate, higher-priority motion rule requires the area on.
 
 ## Editable scenes
 
@@ -128,9 +135,10 @@ and previous selects the last. A single candidate selects itself; zero eligible
 candidates performs no command and does not pause motion.
 
 `script.bilresa_cycle_scenes` accepts `direction: next` (the default) or
-`direction: previous`. Both directions take manual control before activation;
-**top long-press** or the dashboard Resume button restores automatic lighting.
-Bottom long-press retains all-six-lamps-off.
+`direction: previous`. Both directions use the shared queue;
+occupied darkness overrides conflicting scene settings immediately. Top long-press
+or Resume clears non-priority manual ownership. Bottom long-press requests all
+six lamps off, but dark occupied motion areas come back on.
 
 Only nonempty scenes containing individual allowlisted lamps qualify. Scenes
 with plugs, other entities, light groups or unavailable scene entities are
@@ -138,7 +146,7 @@ excluded. Loading, editing, labeling or validating a scene does not activate it.
 
 ## Automatic motion lighting
 
-`motion-lighting.nix` retains the existing rules when manual control is off:
+`motion-lighting.nix` gives occupied darkness priority over manual/scene settings:
 
 - Living/kitchen MYGGSPRAY: occupancy
   `binary_sensor.myggspray_wrlss_mtn_sensor_occupancy`, illuminance
@@ -146,10 +154,9 @@ excluded. Loading, editing, labeling or validating a scene does not activate it.
   living-room lamps and kitchen lamp, preserving brightness/color. Turn them off
   after **10 uninterrupted clear minutes**, only if automatically claimed.
 - Bathroom MYGGSPRAY: Matter node21 (historical identifier16 is retained),
-  occupancy/illuminance entity IDs with `_2` suffix. Below 50 lux, if the bathroom
-  lamp is initially off, turn it on at **10% / 2700 K**. Turn it off after
-  **5 uninterrupted clear minutes**, only if automatically claimed. An already-on
-  manual bathroom lamp is not dimmed or claimed.
+  occupancy/illuminance entity IDs with `_2` suffix. Below50 lux while occupied,
+  enforce **10% / 2700 K**, even over an already-on manual scene. Turn it off after
+  **5 uninterrupted clear minutes**, only if automatically claimed.
 
 These vacancy timers are not motion turn-on delays. Invalid/unavailable lux
 cannot turn lamps on; unavailable motion is not vacancy. Darkness gates turn-on,
@@ -161,7 +168,8 @@ not user controls.
 Every-minute recovery checks retry eligible shutoffs and handle lost timers
 across HA restarts. They do not independently turn lamps on. Restart establishes
 a fresh clear interval, possibly followed by up to one recovery-check minute.
-Manual takeover clears ownership and suspends those rules until explicit resume.
+Non-priority manual control clears automatic ownership. Dark occupancy reclaims
+it immediately, even if the manual helper was restored on across a restart.
 
 ## Source and tests
 
@@ -176,9 +184,13 @@ IX_HA_DEPENDENCY_HELPER=~/.local/state/matter-time-sync/configure-energy.py \
   python3 -B -m unittest discover -s machines/ix/tests -p 'test_*lighting*.py'
 ```
 
-The matching HA runtime passes all **36 lighting tests** without skips, using
-disposable registries and mocked services. Coverage includes the existing 38
-motion-condition cases, button-event guards and mappings, scene filtering/cycle,
+The matching HA runtime passes all **41 lighting tests** without skips, using
+disposable registries, real HA triggers/conditions/scripts and mocked lamp services.
+Coverage includes45 motion-condition cases, immediate manual/native Off reversal,
+late device reports, darkness/sensor recovery without new motion, in-flight
+sensor changes, scene/brightness precedence,
+no-feedback rounding, vacancy
+recovery, slider zero/power-on, button-event guards and mappings, scene filtering/cycle,
 brightness limits, combined-area targeting/common gain, room filtering,
 room-specific scene membership, scoped manual ownership/resume, native human-vs-
 automatic context filtering and brightness slider routing/readback. These are not
@@ -187,8 +199,10 @@ validated before deployment; the live configuration check returns valid.
 
 ## Original expansion checkpoint — 2026-10-07
 
-The latest scoped-manual/slider release record is
-`~/.local/state/ix-scoped-lighting-20261008/` on Oppy. The earlier combined-control
+The latest immediate-priority/slider-only release record is
+`~/.local/state/ix-motion-priority-20261008/` on Oppy. The preceding room-toggle
+release is `~/.local/state/ix-toggle-lighting-20261008/`; scoped manual ownership
+was introduced in `~/.local/state/ix-scoped-lighting-20261008/`. The earlier combined-control
 release is in `~/.local/state/ix-combined-room-20261007/`. The preceding double-click
 revision is in `~/.local/state/ix-bilresa-doubleclick-20261007/`. The following
 is the original expansion's historical checkpoint, not a claim that its hash is
@@ -219,8 +233,8 @@ retry. Do not blindly repeat the full switch to clear its exit status.
 Live verification confirmed owner access, nine scripts, four enabled automations,
 the dashboard, both editable scenes, Button scenes label membership, and retained
 button entity identities. No scenes, lamps or synthetic motion were activated as
-a test. Kernel checks found no fresh matching storage faults, but the underlying
-historical disk/USB problem remains unresolved.
+a test. Later checks since Atuin removal have shown no new matching storage/USB
+faults; the historical incident's exact cause is not established.
 
 A background device audit found no definite stale devices to remove. Only the
 explicitly excluded KLIPPBOK water sensor was unavailable. Nothing was deleted;

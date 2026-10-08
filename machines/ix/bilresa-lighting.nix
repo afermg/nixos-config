@@ -6,14 +6,18 @@ let
   zones = policy.motionZones;
   pauseZone = zone: {
     choose = [{
-      conditions = "{{ affected_lights | select('in', ${builtins.toJSON zone.lights}) | list | count > 0 and not is_state('${zone.manual}', 'on') }}";
+      conditions = ''
+        {{ affected_lights | select('in', ${builtins.toJSON zone.lights}) | list | count > 0
+           and not is_state('${zone.manual}', 'on')
+           and not (is_state('${zone.motion}', 'on')
+                    and is_number(states('${zone.illuminance}'))
+                    and states('${zone.illuminance}') | float(0) < ${toString zone.darkLux}) }}
+      '';
+      # All motion and wrapped manual actions share the router queue now. Never
+      # disable an automation: occupied darkness must always be able to win.
       sequence = [
         { action = "input_boolean.turn_on"; target.entity_id = zone.manual; }
-        # Cancel only this area's in-flight/queued motion actions, then leave its
-        # automation enabled. Its persistent manual flag prevents new actions.
-        { action = "automation.turn_off"; target.entity_id = zone.automation; data.stop_actions = true; }
         { action = "input_boolean.turn_off"; target.entity_id = zone.active; }
-        { action = "automation.turn_on"; target.entity_id = zone.automation; }
       ];
     }];
   };
@@ -70,7 +74,7 @@ in
       lighting_manual_override = { name = "Lighting - Legacy global override (unused)"; icon = "mdi:history"; };
     } // builtins.listToAttrs (builtins.map (zone: {
       name = builtins.replaceStrings [ "input_boolean." ] [ "" ] zone.manual;
-      value = { name = "${zone.name} - Manual lighting (motion paused)"; icon = "mdi:hand-back-right"; };
+      value = { name = "${zone.name} - Manual lighting (dark occupancy wins)"; icon = "mdi:hand-back-right"; };
       # No initial values: restore each area's manual ownership independently.
     }) (builtins.attrValues zones));
     script = {
@@ -82,17 +86,17 @@ in
           { condition = "template"; value_template = "{{ affected_lights is defined and affected_lights is not string and affected_lights | count > 0 and affected_lights | reject('in', ${builtins.toJSON lights}) | list | count == 0 }}"; }
         ] ++ builtins.map pauseZone (builtins.attrValues zones);
       };
-      # A shared queue prevents simultaneous dashboard/button commands from
-      # interleaving scene, brightness and resume operations.
+      # One queue serializes manual commands and motion arbitration. Reconcile
+      # affected areas AFTER each manual command, using current occupancy/lux.
       lighting_manual_action = {
         alias = "Lighting - Serialized manual action";
         mode = "queued";
         max = 20;
         sequence = [
-          { condition = "template"; value_template = "{{ operation | default('') in ['scene', 'brightness', 'level', 'all_off', 'room_on', 'room_off', 'resume', 'takeover'] }}"; }
-          { condition = "template"; value_template = "{{ operation not in ['room_on', 'room_off', 'brightness', 'level', 'resume'] or room | default('all') in ${builtins.toJSON ((builtins.attrNames policy.roomAreas) ++ [ "all" ])} }}"; }
+          { condition = "template"; value_template = "{{ operation | default('') in ['scene', 'brightness', 'level', 'all_off', 'room_on', 'room_off', 'resume', 'takeover', 'motion'] }}"; }
+          { condition = "template"; value_template = "{{ operation not in ['room_on', 'room_off', 'brightness', 'level', 'resume', 'motion'] or room | default('all') in ${builtins.toJSON ((builtins.attrNames policy.roomAreas) ++ [ "all" ])} }}"; }
           { condition = "template"; value_template = "{{ operation != 'brightness' or (is_number(scale | default(none)) and 0 < scale | float(0) <= 2) }}"; }
-          { condition = "template"; value_template = "{{ operation != 'level' or (is_number(level | default(none)) and 0 < level | float(0) <= 255) }}"; }
+          { condition = "template"; value_template = "{{ operation != 'level' or (is_number(level | default(none)) and 0 <= level | float(0) <= 255) }}"; }
           { condition = "template"; value_template = "{{ operation != 'takeover' or (affected_lights is defined and affected_lights is not string and affected_lights | reject('in', ${builtins.toJSON lights}) | list | count == 0) }}"; }
           { condition = "template"; value_template = ''
               {% if operation == 'scene' %}${sceneSafe}{% else %}{{ true }}{% endif %}
@@ -118,6 +122,12 @@ in
               {% endfor %}
               {{ ns.lights }}
             ''; }
+          { variables.available_targets = ''
+              {{ expand(targets) | selectattr('entity_id', 'in', targets)
+                 | selectattr('state', 'in', ['on', 'off'])
+                 | rejectattr('attributes.entity_id', 'defined')
+                 | map(attribute='entity_id') | list }}
+            ''; }
           {
             choose = [{
               conditions = "{{ operation == 'resume' }}";
@@ -138,12 +148,19 @@ in
                   ];
                 }];
               }) (builtins.attrNames zones);
+            } {
+              conditions = "{{ operation == 'motion' }}";
+              sequence = [{
+                action = "script.lighting_motion_priority";
+                data = { room = "{{ room }}"; can_activate = "{{ reason | default('') not in ['idle', 'recovery'] }}"; };
+              }];
             }];
             default = [
               { variables.manual_targets = ''
                   {{ state_attr(scene_entity, 'entity_id') if operation == 'scene'
                      else affected_lights if operation == 'takeover'
                      else ${builtins.toJSON lights} if operation == 'all_off'
+                     else available_targets if operation == 'level' and (level | float == 0 or lit | count == 0)
                      else lit | map(attribute='entity_id') | list if operation in ['brightness', 'level']
                      else targets }}
                 ''; }
@@ -164,6 +181,15 @@ in
                     sequence = [{ action = "{{ 'light.turn_on' if operation == 'room_on' else 'light.turn_off' }}"; target.entity_id = "{{ targets }}"; }];
                   }
                   {
+                    conditions = "{{ operation == 'level' and level | float == 0 }}";
+                    sequence = [{ action = "light.turn_off"; target.entity_id = "{{ manual_targets }}"; }];
+                  }
+                  {
+                    conditions = "{{ operation == 'level' and lit | count == 0 }}";
+                    sequence = [{ action = "light.turn_on"; target.entity_id = "{{ manual_targets }}";
+                      data.brightness = "{{ [1, level | float | round(0) | int] | max }}"; }];
+                  }
+                  {
                     conditions = "{{ operation in ['brightness', 'level'] }}";
                     sequence = [
                       { variables.gain = "{{ level | float / (lit | map(attribute='brightness') | max) if operation == 'level' else [scale | float, 255.0 / (lit | map(attribute='brightness') | max)] | min }}"; }
@@ -179,7 +205,17 @@ in
                   }
                 ];
               }
-            ];
+              # Sensor values may change while a device command is in flight.
+              { action = "script.lighting_take_manual_control"; data.affected_lights = "{{ manual_targets }}"; }
+            ] ++ builtins.map (key: let zone = zones.${key}; in {
+              choose = [{
+                conditions = "{{ manual_targets | select('in', ${builtins.toJSON zone.lights}) | list | count > 0 }}";
+                sequence = [{
+                  action = "script.lighting_motion_priority";
+                  data = { room = key; can_activate = true; force = true; };
+                }];
+              }];
+            }) (builtins.attrNames zones);
           }
         ];
       };
@@ -280,7 +316,7 @@ in
         id = "lighting_native_scene_manual_override";
         initial_state = true;
         alias = "Lighting - Pause motion for a UI lighting scene";
-        description = "Recognize native scene.turn_on requests without listening to every sensor update. Wrapped controls guarantee pause before commanding lamps.";
+        description = "Track native scene ownership; occupied darkness immediately wins. Actual lamp reports also reconcile late native command completion.";
         mode = "queued";
         triggers = [{
           trigger = "event"; event_type = "call_service";

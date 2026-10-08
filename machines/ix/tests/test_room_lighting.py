@@ -19,18 +19,28 @@ class RoomLightingPolicyTests(unittest.TestCase):
         for room,name,card in zip(('bedroom','living_kitchen','bathroom'),
                 ('Bedroom','Living room + kitchen','Bathroom'),cards):
             self.assertEqual(card['cards'][0]['content'],'## '+name)
-            buttons=card['cards'][1]['cards']
-            self.assertEqual([b['name'] for b in buttons],['On','Off'])
-            for b,power in zip(buttons[:2],('on','off')):
-                self.assertEqual(b['tap_action']['perform_action'],'script.room_lights_power')
-                self.assertEqual(b['tap_action']['data'],{'room':room,'power':power})
-            slider=card['cards'][2]
-            self.assertEqual(slider['features'],[{'type':'light-brightness'}])
-            self.assertEqual(slider['entity'],'light.ix_'+room+'_lighting_control')
+            control=card['cards'][1]
+            self.assertEqual(control['type'],'tile')
+            self.assertEqual(control['features'],[{'type':'numeric-input','style':'slider'}])
+            self.assertEqual(control['entity'],'number.ix_'+room+'_lighting_level')
+            number=next(n for n in CONFIG['template'][0]['number'] if n['default_entity_id']==control['entity'])
+            self.assertEqual((number['min'],number['max'],number['step']),(0,100,1))
+            self.assertEqual(number['set_value'][0]['action'],'script.lighting_manual_action')
+            self.assertEqual(number['set_value'][0]['data']['room'],room)
+            self.assertEqual(control['tap_action'],{'action':'none'})
+            self.assertEqual(control['icon_tap_action'],{'action':'none'})
+            self.assertFalse(any(c.get('name') in ['On','Off'] or c['type']=='grid'
+                                 for c in card['cards']))
+            light=next(l for l in CONFIG['template'][0]['light']
+                       if l['default_entity_id']=='light.ix_'+room+'_lighting_control')
+            for power in ('on','off'):
+                self.assertEqual(light['turn_'+power],[{'action':'script.room_lights_power',
+                    'data':{'room':room,'power':power}}])
             if room!='bedroom':
-                self.assertEqual(card['cards'][3]['entity'],'input_boolean.lighting_manual_'+room)
-                self.assertEqual(card['cards'][4]['tap_action']['data'],{'room':room})
-            else:self.assertEqual(len(card['cards']),3)
+                self.assertEqual(card['cards'][2]['entity'],'input_boolean.lighting_manual_'+room)
+                self.assertEqual(card['cards'][3]['tap_action']['data'],{'room':room})
+                self.assertEqual(len(card['cards']),4)
+            else:self.assertEqual(len(card['cards']),2)
     def test_scene_and_resume_buttons(self):
         self.assertEqual([b['tap_action']['perform_action'] for b in CARDS[2]['cards']],
                          ['script.lighting_resume_automatic','script.bilresa_all_lights_off'])

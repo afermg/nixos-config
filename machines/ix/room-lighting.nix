@@ -31,24 +31,31 @@ let
     turn_off = [{ action = "script.room_lights_power"; data = { room = room.id; power = "off"; }; }];
     set_level = [{ action = "script.lighting_manual_action"; data = { operation = "level"; room = room.id; level = "{{ brightness }}"; }; }];
   };
+  roomLevel = room: {
+    name = "${room.name} brightness";
+    unique_id = "ix_${room.id}_lighting_level";
+    default_entity_id = "number.ix_${room.id}_lighting_level";
+    min = 0; max = 100; step = 1; unit_of_measurement = "%";
+    availability = (roomLight room).availability;
+    state = roomContext room + ''
+      {% set brightest = ([0] + (expand(targets) | selectattr('entity_id', 'in', targets)
+          | selectattr('state', 'eq', 'on') | map(attribute='attributes.brightness', default=0)
+          | map('int') | list)) | max %}
+      {{ [1, (brightest * 100 / 255) | round(0)] | max if brightest > 0 else 0 }}
+    '';
+    set_value = [{ action = "script.lighting_manual_action";
+      data = { operation = "level"; room = room.id; level = "{{ ((value | float) * 255 / 100) | round(0) | int }}"; }; }];
+  };
   roomCard = room: {
     type = "vertical-stack";
     cards = [
       { type = "markdown"; content = "## ${room.name}"; }
-      {
-        type = "grid"; columns = 2; square = false;
-        cards = [
-          (button "On" "mdi:lightbulb-on" "script.room_lights_power" { room = room.id; power = "on"; })
-          (button "Off" "mdi:lightbulb-off" "script.room_lights_power" { room = room.id; power = "off"; })
-
-        ];
-      }
-      { type = "tile"; entity = "light.ix_${room.id}_lighting_control"; name = "Brightness (brightest lamp)";
+      { type = "tile"; entity = "number.ix_${room.id}_lighting_level"; name = "Brightness (0 = off)";
         tap_action.action = "none"; icon_tap_action.action = "none";
-        features = [{ type = "light-brightness"; }]; }
+        features = [{ type = "numeric-input"; style = "slider"; }]; }
     ] ++ (if builtins.hasAttr room.id policy.motionZones then [
       { type = "entity"; entity = policy.motionZones.${room.id}.manual;
-        name = "Manual lighting / motion paused here"; tap_action.action = "none"; }
+        name = "Manual lighting (dark occupancy overrides)"; tap_action.action = "none"; }
       (button "Resume motion here" "mdi:motion-sensor" "script.lighting_resume_automatic" { room = room.id; })
     ] else []);
   };
@@ -57,8 +64,8 @@ let
     views = [{
       title = "Rooms"; path = "rooms";
       cards = [
-        { type = "markdown"; content = "BILRESA: top short = brighter; bottom short = dimmer; top double = next scene; bottom double = previous scene; top long = Resume automatic lighting; bottom long = six lamps off. Manual changes pause only motion for the affected lights/area, not other rooms. Use On first; sliders scale lit lamps together and preserve their balance/colors. No appliance plugs are included."; }
-        { type = "markdown"; content = "Bedroom-only lighting does not pause either motion sensor. The motion automations stay enabled; each area has its own persistent manual pause and Resume control. Top long-press resumes both areas."; }
+        { type = "markdown"; content = "BILRESA: top short = brighter; bottom short = dimmer; top double = next scene; bottom double = previous scene; top long = Resume automatic lighting; bottom long = six lamps off. Dark occupancy immediately overrides scene/manual settings in the affected area, including Off. Sliders alone control each room: zero turns it off; raising an entirely off room turns it on. Otherwise sliders scale lit lamps together, preserving balance/colors. Bathroom dark occupancy enforces its 10% / 2700 K night light. No appliance plugs are included."; }
+        { type = "markdown"; content = "Bedroom-only lighting does not affect either motion sensor. Motion automations stay enabled. Manual ownership applies only without dark occupancy; priority returns immediately, without waiting for new motion. Top long-press resumes both areas."; }
         {
           type = "grid"; columns = 2; square = false;
           cards = [
@@ -77,7 +84,7 @@ let
         }
         {
           type = "markdown";
-          content = "Edit scenes in Settings → Automations & scenes. Label scenes **Button scenes** to include them in the button cycle (entity-ID order). Scenes must contain only the six individual lamps, not groups or plugs. Defaults are seeded once; later edits are retained. Native scene requests and direct human lamp controls also pause the affected area's motion; wrapped dashboard controls guarantee pause-before-command. Scenes with explicit off commands in other rooms affect those rooms too.";
+          content = "Edit scenes in Settings → Automations & scenes. Label scenes **Button scenes** to include them in the button cycle (entity-ID order). Scenes must contain only the six individual lamps, not groups or plugs. Defaults are seeded once; later edits are retained. Scenes and direct lamp controls cannot hold an occupied, dark area off. Other areas remain unaffected. Scenes with explicit off commands in other rooms affect those rooms too.";
         }
       ] ++ builtins.map roomCard rooms;
     }];
@@ -85,7 +92,12 @@ let
 in
 {
   services.home-assistant.config = {
-    template = [{ light = builtins.map roomLight rooms; }];
+    template = [{
+      # Keep existing light adapters/IDs for compatibility; the displayed number
+      # sliders reach zero (HA's light-brightness feature has a minimum of 1%).
+      light = builtins.map roomLight rooms;
+      number = builtins.map roomLevel rooms;
+    }];
     script = {
       room_lights_power = {
         alias = "Room lights - Manual on/off";
@@ -101,7 +113,7 @@ in
       };
       room_lights_proportional = {
         alias = "Room lights - Proportional brightness";
-        description = "Pause only affected areas, scale lit lamps together, preserve color and balance. Leave off lamps and plugs untouched.";
+        description = "Scale lit lamps together, preserve color/balance and exclude plugs. Dark occupancy immediately takes precedence.";
         icon = "mdi:brightness-percent";
         mode = "queued";
         max = 10;
