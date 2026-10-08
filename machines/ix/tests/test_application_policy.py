@@ -224,7 +224,10 @@ class ApplicationPolicyTests(unittest.TestCase):
         self.assertIn('server_host = "127.0.0.1";', text)
         components = re.search(r"extraComponents\s*=\s*\[([^]]*)\]", text)
         self.assertIsNotNone(components)
-        self.assertEqual(re.findall(r'"([^"]+)"', components.group(1)), ["met", "roborock"])
+        self.assertEqual(re.findall(r'"([^"]+)"', components.group(1)), [
+            "met", "roborock", "google_translate", "cast", "apple_tv",
+            "androidtv_remote", "ssdp", "sonos",
+        ])
         self.assertNotRegex(text, r"(?m)^\s*default_config\s*=")
         self.assertNotRegex(text, r"(?m)^\s*roborock\s*=")
         self.assertNotIn("ConditionPathExists", text)
