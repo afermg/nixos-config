@@ -1,5 +1,7 @@
 # ix: headless NixOS, direct SD boot, HDD root
 
+For the current home-automation setup, see the [Home Assistant overview](../../docs/home-assistant.md).
+
 See [DEBRIEF.md](DEBRIEF.md) for the final application/data handoff and deferred
 items, and [MAINTENANCE_LOG.md](MAINTENANCE_LOG.md) for the deployment history and troubleshooting.
 The server hostname and flake entry are **ix**. Its independent Home Manager
@@ -208,9 +210,10 @@ ssh -NT -o ExitOnForwardFailure=yes -L 127.0.0.1:18384:127.0.0.1:8384 ix
 
 Open `http://127.0.0.1:18384` for Syncthing. Syncthing and HA's backend remain
 loopback-only; HA additionally has the narrowly scoped LAN endpoint below.
-HA has no imported accounts/device state; configure desired integrations in
-its UI and add their Nix dependencies explicitly (`met` and `roborock` are
-included). HA 2026.9 owns accepted HTTP settings in `.storage/http`; YAML is
+Preserve HA's existing owner, users, device registry, commissioned Matter fabric
+and Thread network; rebuilding must not trigger re-onboarding or re-pairing.
+Configure integrations in its UI and add their Nix dependencies explicitly.
+HA 2026.9 owns accepted HTTP settings in `.storage/http`; YAML is
 only the initial migration input, so verify the actual listener after changing
 settings.
 
@@ -220,9 +223,10 @@ settings.
 integration and its hourly, device-filtered synchronization.
 
 The Energy dashboard and History are enabled. The deployed Recorder policy
-includes only the GRILLPLATS fridge plug's native W and kWh sensors. Recording
-the Moby/electronics plug meters remains a separate, uncommitted change.
-Phone battery/health and unrelated temperature sensors are excluded. Extend
+includes the fridge, Moby and TV/setup plugs' native W/kWh sensors and the
+ALPSTUGA temperature sensor (seven entities). Phone battery/health and unrelated
+sensors are excluded. Re-enabling previously excluded meters can assign accumulated
+energy to the first new bucket: that catch-up spike is not a power surge. Extend
 `recorder.include.entities` when adding another metering appliance. Do not use
 broad `*power*` globs: the Moto G Power phone's entity IDs also contain that word.
 Enable disabled appliance measurement entities first; Recorder cannot create
@@ -233,16 +237,20 @@ Use cumulative energy (`kWh`/`Wh`, compatible energy device/state classes) under
 cumulative energy counter. New installations need time to accumulate statistics;
 no history from before recording was enabled can be recovered.
 
-### Motion lighting and bedroom scene
+### Lighting and cleaning
 
-[LIGHTING.md](LIGHTING.md) documents the MYGGSPRAY automation: the living-room
-and kitchen bulbs turn on below 50 lux and turn off after 10 minutes without
-motion. The second MYGGSPRAY controls a warm, 10% bathroom night light with a
-five-minute timeout. It also documents the persistent **Bedroom - Medium
-illumination** scene (both bedroom bulbs at 50%, without changing their color
-settings), and the **Room lighting** dashboard with proportional brightness
-sliders, one living/kitchen control with separate HA areas, and per-area manual
-ownership. Bedroom-only commands leave bathroom/living motion active.
+[LIGHTING.md](LIGHTING.md) documents six white-spectrum lamps and four BILRESA
+remotes:1/2 control bedroom+bathroom;3/4 control living+kitchen at equal brightness
+for lit lamps. Only the dedicated all-off command crosses groups. Living/kitchen
+motion uses a40lux cutoff and10-minute vacancy timer. Bathroom brightness is20%
+midnight–07:00 and80% otherwise (local time), with a five-minute vacancy timer.
+Low unchanged lux does not expire out of eligibility. Shared white controls and
+zero-capable brightness sliders remain; the redundant Rooms dashboard is removed.
+Saved scenes remain editable. The requested Off→Medium→High cycle is still pending.
+
+[ROBOROCK.md](ROBOROCK.md) describes the user-started whole-home vacuum-then-mop
+sequence and its completion checks. See [HOME_ASSISTANT_BACKUP.md](HOME_ASSISTANT_BACKUP.md)
+for the proposed consistent/off-device backup design and outstanding approval.
 
 See [XMPP.md](XMPP.md) for XMPP recovery, bounded restarts and health checks.
 
@@ -252,7 +260,8 @@ Enter `http://<ix-LAN-IPv4>:8124` manually in the official Home Assistant app.
 The current DHCP address is `192.168.1.162`, hence
 `http://192.168.1.162:8124`. This is not a static lease: check `ip -4 addr show
 end0` if it changes, or reserve its existing Ethernet MAC in the home router.
-Automatic discovery remains disabled; allow the phone app local-network access
+Enter this address manually; Thread/Matter's required mDNS is explicitly enabled
+without `default_config`. Allow the phone app local-network access
 and use the regular home Wi-Fi, not an isolated guest network. The official
 companion app requires `services.home-assistant.config.mobile_app = { };`,
 which is explicitly enabled without `default_config`. Nix infers its Python

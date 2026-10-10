@@ -1,17 +1,32 @@
-# Both registered bedroom BILRESA entries; only the explicit six lamps.
+# Four explicitly bound BILRESA remotes; only all-off crosses control groups.
 { ... }:
 let
   policy = import ./lighting-policy.nix;
   lights = policy.lights;
   zones = policy.motionZones;
+  ambient = import ./bathroom-ambient.nix { inherit policy; };
+  remoteRooms = builtins.listToAttrs (builtins.concatMap (room:
+    builtins.map (name: { inherit name; value = room; })
+      (policy.bilresa.${room}.top ++ policy.bilresa.${room}.bottom)
+  ) (builtins.attrNames policy.bilresa));
+  scopedAllowed = ''
+    {% set allowed = ${builtins.toJSON lights} %}
+    {% set selected = room | default('all') %}
+    {% set areas = ${builtins.toJSON policy.roomAreas} %}
+    {% set scope = namespace(members=[]) %}
+    {% for area in areas.get(selected, []) %}
+      {% set scope.members = scope.members + area_entities(area) %}
+    {% endfor %}
+    {% if selected != 'all' %}{% set allowed = allowed | select('in', scope.members) | list %}{% endif %}
+  '';
   pauseZone = zone: {
     choose = [{
       conditions = ''
+        ${if zone ? ambient then ambient.prelude else ""}
         {{ affected_lights | select('in', ${builtins.toJSON zone.lights}) | list | count > 0
            and not is_state('${zone.manual}', 'on')
            and not (is_state('${zone.motion}', 'on')
-                    and is_number(states('${zone.illuminance}'))
-                    and states('${zone.illuminance}') | float(0) < ${toString zone.darkLux}) }}
+                    and ${if zone ? ambient then ambient.valid else "(is_number(states('${zone.illuminance}')) and states('${zone.illuminance}') | float(0) < ${toString zone.darkLux})"}) }}
       '';
       # All motion and wrapped manual actions share the router queue now. Never
       # disable an automation: occupied darkness must always be able to win.
@@ -42,7 +57,7 @@ let
   '';
   sceneSafe = ''
     {% set members = state_attr(scene_entity | default(""), 'entity_id') or [] %}
-    {% set allowed = ${builtins.toJSON lights} %}
+    ${scopedAllowed}
     {{ scene_entity is defined and scene_entity.startswith('scene.')
        and states(scene_entity) != 'unavailable' and members | count > 0
        and members | reject('in', allowed) | list | count == 0
@@ -54,7 +69,7 @@ let
   };
   sceneCandidates = ''
     {% set ns = namespace(scenes=[]) %}
-    {% set allowed = ${builtins.toJSON lights} %}
+    ${scopedAllowed}
     {% for entity in label_entities('Button scenes') | sort %}
       {% set members = state_attr(entity, 'entity_id') or [] %}
       {% if entity.startswith('scene.') and states(entity) != 'unavailable'
@@ -84,6 +99,8 @@ in
         max = 20;
         sequence = [
           { condition = "template"; value_template = "{{ affected_lights is defined and affected_lights is not string and affected_lights | count > 0 and affected_lights | reject('in', ${builtins.toJSON lights}) | list | count == 0 }}"; }
+          { "if" = "{{ affected_lights | select('in', ${builtins.toJSON zones.bathroom.lights}) | list | count > 0 }}";
+            "then" = [{ action = "script.lighting_bathroom_sample_ambient"; }]; }
         ] ++ builtins.map pauseZone (builtins.attrValues zones);
       };
       # One queue serializes manual commands and motion arbitration. Reconcile
@@ -93,8 +110,11 @@ in
         mode = "queued";
         max = 20;
         sequence = [
-          { condition = "template"; value_template = "{{ operation | default('') in ['scene', 'brightness', 'level', 'all_off', 'room_on', 'room_off', 'resume', 'takeover', 'motion'] }}"; }
-          { condition = "template"; value_template = "{{ operation not in ['room_on', 'room_off', 'brightness', 'level', 'resume', 'motion'] or room | default('all') in ${builtins.toJSON ((builtins.attrNames policy.roomAreas) ++ [ "all" ])} }}"; }
+          { condition = "template"; value_template = "{{ operation | default('') in ['scene', 'brightness', 'level', 'temperature', 'all_off', 'room_on', 'room_off', 'resume', 'takeover', 'motion', 'ambient'] }}"; }
+          { condition = "template"; value_template = "{{ operation not in ['room_on', 'room_off', 'brightness', 'level', 'resume', 'motion', 'scene'] or room | default('all') in ${builtins.toJSON ((builtins.attrNames policy.roomAreas) ++ [ "all" ])} }}"; }
+          { condition = "template"; value_template = "{{ operation != 'ambient' or room | default('') == 'bathroom' }}"; }
+          { condition = "template"; value_template = "{{ operation != 'temperature' or room | default('') in ${builtins.toJSON policy.rooms} }}"; }
+          { condition = "template"; value_template = "{{ operation != 'temperature' or (is_number(kelvin | default(none)) and 2202 <= kelvin | float <= 6535) }}"; }
           { condition = "template"; value_template = "{{ operation != 'brightness' or (is_number(scale | default(none)) and 0 < scale | float(0) <= 2) }}"; }
           { condition = "template"; value_template = "{{ operation != 'level' or (is_number(level | default(none)) and 0 <= level | float(0) <= 255) }}"; }
           { condition = "template"; value_template = "{{ operation != 'takeover' or (affected_lights is defined and affected_lights is not string and affected_lights | reject('in', ${builtins.toJSON lights}) | list | count == 0) }}"; }
@@ -135,7 +155,8 @@ in
                 { variables.resume_rooms = ''
                     {% set selected = room | default('all') %}
                     {{ ${builtins.toJSON (builtins.attrNames zones)} if selected == 'all'
-                       else ['living_kitchen'] if selected in ['living_room', 'kitchen'] else [selected] }}
+                       else ['living_kitchen'] if selected in ['living_room', 'kitchen']
+                       else ['bathroom'] if selected == 'bedroom_bathroom' else [selected] }}
                   ''; }
                 { action = "input_boolean.turn_off"; target.entity_id = "input_boolean.lighting_manual_override"; }
               ] ++ builtins.map (key: let zone = zones.${key}; in {
@@ -149,6 +170,27 @@ in
                 }];
               }) (builtins.attrNames zones);
             } {
+              conditions = "{{ operation == 'ambient' }}";
+              sequence = [
+                { variables.previous_ambient = "{{ states('${zones.bathroom.ambient.helper}') }}"; }
+                # Initial integration states can come from the Matter cache.
+                # Require a subsequent report, but preserve any known OFF sample.
+                { "if" = "{{ reason | default('') == 'startup' }}";
+                  "then" = [{ action = "input_text.set_value";
+                    target.entity_id = zones.bathroom.ambient.helper;
+                    data.value = ''
+                      ${ambient.prelude}
+                      ambient:{{ {'lux': ambient.get('lux') if ambient is mapping else none,
+                                  'sampled': ambient.get('sampled') if ambient is mapping else none,
+                                  'started': as_timestamp(now())} | to_json }}
+                    '';
+                  }]; }
+                { action = "script.lighting_bathroom_sample_ambient"; }
+                { condition = "template"; value_template = "{{ states('${zones.bathroom.ambient.helper}') != previous_ambient }}"; }
+                { action = "script.lighting_motion_priority";
+                  data = { room = "bathroom"; can_activate = true; }; }
+              ];
+            } {
               conditions = "{{ operation == 'motion' }}";
               sequence = [{
                 action = "script.lighting_motion_priority";
@@ -161,6 +203,7 @@ in
                      else affected_lights if operation == 'takeover'
                      else ${builtins.toJSON lights} if operation == 'all_off'
                      else available_targets if operation == 'level' and (level | float == 0 or lit | count == 0)
+                     else (lit | map(attribute='entity_id') | list if lit | count > 0 else available_targets) if operation == 'temperature'
                      else lit | map(attribute='entity_id') | list if operation in ['brightness', 'level']
                      else targets }}
                 ''; }
@@ -171,6 +214,11 @@ in
                   {
                     conditions = "{{ operation == 'scene' }}";
                     sequence = [{ action = "scene.turn_on"; target.entity_id = "{{ scene_entity }}"; }];
+                  }
+                  {
+                    conditions = "{{ operation == 'temperature' }}";
+                    sequence = [{ action = "light.turn_on"; target.entity_id = "{{ manual_targets }}";
+                      data.color_temp_kelvin = "{{ kelvin | int }}"; }];
                   }
                   {
                     conditions = "{{ operation == 'all_off' }}";
@@ -193,12 +241,13 @@ in
                     conditions = "{{ operation in ['brightness', 'level'] }}";
                     sequence = [
                       { variables.gain = "{{ level | float / (lit | map(attribute='brightness') | max) if operation == 'level' else [scale | float, 255.0 / (lit | map(attribute='brightness') | max)] | min }}"; }
+                      { variables.shared_level = "{{ [1, ((lit | map(attribute='brightness') | max) * gain) | round(0) | int] | max }}"; }
                       { repeat = {
                           for_each = "{{ lit }}";
                           sequence = [{
                             action = "light.turn_on";
                             target.entity_id = "{{ repeat.item.entity_id }}";
-                            data.brightness = "{{ [1, (repeat.item.brightness * gain) | round(0) | int] | max }}";
+                            data.brightness = "{{ shared_level if room | default('all') == 'living_kitchen' else [1, (repeat.item.brightness * gain) | round(0) | int] | max }}";
                           }];
                         }; }
                     ];
@@ -223,7 +272,7 @@ in
         alias = "Lighting - Resume automatic lighting";
         icon = "mdi:motion-sensor";
         mode = "queued";
-        fields.room = { name = "Area (omit for all)"; default = "all"; selector.select.options = policy.rooms ++ [ "all" ]; };
+        fields.room = { name = "Area (omit for all)"; default = "all"; selector.select.options = policy.rooms ++ [ "bedroom_bathroom" "all" ]; };
         sequence = [ (dispatch "resume" { room = "{{ room | default('all') }}"; }) ];
       };
       lighting_activate_scene = {
@@ -236,14 +285,14 @@ in
       };
       bilresa_cycle_scenes = {
         alias = "BILRESA - Cycle button scenes";
-        description = "Next/previous editable Button scenes scene, in entity-ID order; only allowlisted individual lamps.";
+        description = "Next/previous Button scenes scene wholly inside the selected group. Scenes with unrelated OFF members are excluded too.";
         mode = "queued";
         fields.direction = {
           name = "Direction"; default = "next";
           selector.select.options = [ "next" "previous" ];
         };
         sequence = [
-          { condition = "template"; value_template = "{{ direction | default('next') in ['next', 'previous'] }}"; }
+          { condition = "template"; value_template = "{{ direction | default('next') in ['next', 'previous'] and room | default('all') in ${builtins.toJSON ((builtins.attrNames policy.roomAreas) ++ [ "all" ])} }}"; }
           { variables.scene_ids = sceneCandidates; }
           { condition = "template"; value_template = "{{ scene_ids | count > 0 }}"; }
           { variables.next_scene = ''
@@ -259,15 +308,15 @@ in
                              else (-1 if step < 0 else 0) %}
               {{ scene_ids[index] }}
             ''; }
-          (dispatch "scene" { scene_entity = "{{ next_scene }}"; })
+          (dispatch "scene" { scene_entity = "{{ next_scene }}"; room = "{{ room | default('all') }}"; })
         ];
       };
       bilresa_adjust_lights = {
-        alias = "BILRESA - Proportional brightness";
-        description = "Scale lit lamps together; preserve colors and ratios. Leave off bulbs off.";
+        alias = "BILRESA - Scoped brightness";
+        description = "Only the selected group. Living/kitchen lit lamps receive one equal level; bedroom/bathroom preserve balance. Off bulbs remain off.";
         mode = "queued";
         fields.scale = { name = "Brightness multiplier"; required = true; selector.number = { min = 0.1; max = 2; step = 0.05; mode = "box"; }; };
-        sequence = [ (dispatch "brightness" { room = "all"; scale = "{{ scale }}"; }) ];
+        sequence = [ (dispatch "brightness" { room = "{{ room | default('all') }}"; scale = "{{ scale }}"; }) ];
       };
       bilresa_all_lights_off = {
         alias = "BILRESA - All lights off";
@@ -281,12 +330,12 @@ in
         id = "bilresa_manual_lighting";
         initial_state = true;
         alias = "BILRESA - Manual lighting controls";
-        description = "Top: short brighter, double next scene, long resume automatic lighting. Bottom: short dimmer, double previous scene, long all six lamps off.";
+        description = "1/2: bedroom+bathroom; 3/4: living+kitchen at equal brightness. Short adjusts only the group; double cycles group-only scenes; top long resumes that group's motion. Bottom long remains global all-off.";
         mode = "queued";
         max = 20;
         triggers = [
-          { trigger = "state"; entity_id = [ "event.bedroom_bilresa_dual_button_1_button_1" "event.bilresa_dual_button_button_1" ]; id = "top"; }
-          { trigger = "state"; entity_id = [ "event.bedroom_bilresa_dual_button_1_button_2" "event.bilresa_dual_button_button_2" ]; id = "bottom"; }
+          { trigger = "state"; entity_id = builtins.concatMap (group: group.top) (builtins.attrValues policy.bilresa); id = "top"; }
+          { trigger = "state"; entity_id = builtins.concatMap (group: group.bottom) (builtins.attrValues policy.bilresa); id = "bottom"; }
         ];
         conditions = [{ condition = "template"; value_template = ''
           {{ trigger.from_state is not none and trigger.to_state is not none
@@ -297,17 +346,20 @@ in
              and (as_timestamp(trigger.to_state.state, 0) - as_timestamp(trigger.to_state.last_changed)) | abs < 5
              and (as_timestamp(now()) - as_timestamp(trigger.to_state.state, 0)) | abs < 5 }}
         ''; }];
-        actions = [{ choose = [
+        actions = [
+          { variables.remote_room = "{{ ${builtins.toJSON remoteRooms}.get(trigger.to_state.entity_id, '') }}"; }
+          { condition = "template"; value_template = "{{ remote_room in ${builtins.toJSON (builtins.attrNames policy.bilresa)} }}"; }
+          { choose = [
           { conditions = "{{ trigger.id == 'top' and trigger.to_state.attributes.event_type == 'multi_press_1' }}";
-            sequence = [{ action = "script.bilresa_adjust_lights"; data.scale = 1.25; }]; }
+            sequence = [{ action = "script.bilresa_adjust_lights"; data = { room = "{{ remote_room }}"; scale = 1.25; }; }]; }
           { conditions = "{{ trigger.id == 'bottom' and trigger.to_state.attributes.event_type == 'multi_press_1' }}";
-            sequence = [{ action = "script.bilresa_adjust_lights"; data.scale = 0.8; }]; }
+            sequence = [{ action = "script.bilresa_adjust_lights"; data = { room = "{{ remote_room }}"; scale = 0.8; }; }]; }
           { conditions = "{{ trigger.id == 'top' and trigger.to_state.attributes.event_type == 'multi_press_2' }}";
-            sequence = [{ action = "script.bilresa_cycle_scenes"; data.direction = "next"; }]; }
+            sequence = [{ action = "script.bilresa_cycle_scenes"; data = { room = "{{ remote_room }}"; direction = "next"; }; }]; }
           { conditions = "{{ trigger.id == 'bottom' and trigger.to_state.attributes.event_type == 'multi_press_2' }}";
-            sequence = [{ action = "script.bilresa_cycle_scenes"; data.direction = "previous"; }]; }
+            sequence = [{ action = "script.bilresa_cycle_scenes"; data = { room = "{{ remote_room }}"; direction = "previous"; }; }]; }
           { conditions = "{{ trigger.id == 'top' and trigger.to_state.attributes.event_type == 'long_press' }}";
-            sequence = [{ action = "script.lighting_resume_automatic"; }]; }
+            sequence = [{ action = "script.lighting_resume_automatic"; data.room = "{{ remote_room }}"; }]; }
           { conditions = "{{ trigger.id == 'bottom' and trigger.to_state.attributes.event_type == 'long_press' }}";
             sequence = [{ action = "script.bilresa_all_lights_off"; }]; }
         ]; }];

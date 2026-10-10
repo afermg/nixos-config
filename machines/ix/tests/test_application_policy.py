@@ -253,6 +253,11 @@ class ApplicationPolicyTests(unittest.TestCase):
         self.assertEqual(re.findall(r'"([^"]+)"', recorder.group(1)), [
             "sensor.kitchen_grillplats_plug_fridge_energy",
             "sensor.kitchen_grillplats_plug_fridge_power",
+            "sensor.grillplats_plug_energy",
+            "sensor.grillplats_plug_power",
+            "sensor.grillplats_plug_energy_2",
+            "sensor.grillplats_plug_power_2",
+            "sensor.alpstuga_air_quality_monitor_temperature",
         ])
         self.assertNotIn('"sensor.*power*"', text)
         self.assertNotRegex(text, r"(?m)^\s*default_config\s*=")
@@ -292,6 +297,15 @@ class ApplicationPolicyTests(unittest.TestCase):
         self.assertIn('iptables -w -D nixos-fw ${homeAssistantLanRule} 2>/dev/null || true', text)
         self.assertNotRegex(text, r'allowedTCPPorts\s*=\s*\[[^]]*\b812[34]\b')
         self.assertNotRegex(text, r'trustedInterfaces\s*=\s*\[[^]]*"end0"')
+
+    def test_sonos_callback_is_only_ipv4_home_lan(self):
+        text = (ROOT / "machines/ix/services.nix").read_text()
+        rule = re.search(r'sonosEventRule = "([^"]+)";', text)
+        self.assertIsNotNone(rule)
+        self.assertEqual(rule.group(1), '-i end0 -s 192.168.1.0/24 -d 192.168.1.0/24 -p tcp --dport 1400 -m comment --comment ix-sonos-events-lan -j nixos-fw-accept')
+        self.assertIn('iptables -w -A nixos-fw ${sonosEventRule}', text)
+        self.assertIn('iptables -w -D nixos-fw ${sonosEventRule} 2>/dev/null || true', text)
+        self.assertNotRegex(text, r'allowedTCPPorts\s*=\s*\[[^]]*\b1400\b')
 
 
 if __name__ == "__main__":

@@ -1,5 +1,48 @@
-# Minimal Home Assistant on Moby
+# Home Assistant
 
+## Current setup: ix
+
+The home controller runs **Home Assistant Core on ix**, with configuration in
+[`machines/ix/services.nix`](../machines/ix/services.nix). Nix manages services,
+integration dependencies and lighting rules; HA keeps accounts, device identities,
+editable scenes, dashboards and preferences in `/var/lib/hass`. This is not HA OS:
+there is no Supervisor/add-on store. Preserve existing state; do not re-onboard or
+re-pair devices when rebuilding.
+
+- **Access:** home Wi-Fi uses `http://192.168.1.162:8124` (DHCP address). A narrowly
+  scoped IPv4 LAN proxy forwards to `127.0.0.1:8123`; remote access uses a pinned
+  SSH tunnel to ix. Keep HA authentication; do not expose these ports publicly.
+- **Matter/Thread:** one ZBT-2 radio, native OTBR and Matter Server, with private
+  runtime state and loopback management APIs. [`thread.nix`](../machines/ix/thread.nix)
+  also provides the matching Matter OTA helper and Ethernet-scoped mDNS.
+- **Lighting:** six white-spectrum bulbs. BILRESA **1/2 control bedroom+bathroom**;
+  **3/4 control living+kitchen**, with equal brightness for lit lamps. Scenes and
+  resume are group-scoped; bottom long-press remains global all-off, subject to
+  occupied-motion priority. White-only controls replace the redundant Rooms
+  dashboard. Favourite Kelvin presets are saved in HA's entity settings.
+- **Motion:** living/kitchen turns on below **40 lux**, then off after **10 clear
+  minutes**. Bathroom uses **20% midnight–07:00 / 80% otherwise**, at 2700 K in
+  `America/New_York`, with a **five-minute** vacancy timer. Last-reported low lux
+  remains usable when unchanged; an expired ambient sample no longer blocks motion.
+- **History:** records fridge, TV/setup and Moby plug power/energy plus ALPSTUGA
+  temperature. Re-enabling recording produced historical catch-up spikes; old
+  missing intervals cannot be reconstructed or compared as instantaneous usage.
+- **Cleaning:** the **Cleaning** dashboard offers user-started whole-home
+  vacuum-then-mop and cancel/dock. A fresh successful completion record—not merely
+  docking—is required before mopping. No automatic start or restart resumption.
+- **Sonos:** callbacks use TCP1400, restricted to the IPv4 home LAN on `end0`.
+
+Details: [lighting](../machines/ix/LIGHTING.md),
+[Roborock](../machines/ix/ROBOROCK.md), [ix access](../machines/ix/README.md).
+The [backup proposal](../machines/ix/HOME_ASSISTANT_BACKUP.md) is **not a verified
+consistent, off-device backup**. Protect HA, Matter and Thread state together;
+Git alone is insufficient. The requested **Off → Medium → High** button cycle is
+still pending: current double-clicks cycle eligible saved scenes in entity-ID order.
+A physical owned vacuum-then-mop run has not been validated.
+
+## Legacy standalone Moby configuration
+
+The earlier minimal module remains available; it is not the current ix controller.
 The NixOS module is [`machines/moby/home-assistant.nix`](../machines/moby/home-assistant.nix).
 It runs Home Assistant Core as the `hass` system user, with the web UI and
 Home Assistant's built-in helpers. It deliberately omits `default_config`:
@@ -11,7 +54,7 @@ This is a NixOS-managed Core installation, not Home Assistant OS: there is no
 Supervisor or add-on store. Upstream does not officially support this installation
 method; NixOS maintains the packaging. Add companion services through Nix later.
 
-## First start
+### First start
 
 From the repository root on Moby, make the new module visible to Git-backed flakes
 (if it is not already tracked), then rebuild:
@@ -36,7 +79,7 @@ The intended listener is loopback-only, not LAN or direct Tailscale. Moby's
 firewall is currently disabled, so do not change the HTTP listen address to
 `0.0.0.0` or leave the listen-address list empty.
 
-## HTTP settings migration (Home Assistant 2026.8+)
+### HTTP settings migration (Home Assistant 2026.8+)
 
 NixOS removed `services.home-assistant.openFirewall`; even setting it to `false`
 now fails evaluation. Home Assistant moved HTTP settings from YAML into its
@@ -61,7 +104,7 @@ If migration/binding fails, Home Assistant can fall back to an all-interface
 listener, so do not assume that the YAML alone guarantees network isolation.
 See the [HTTP integration documentation](https://www.home-assistant.io/integrations/http/).
 
-## Add the Roborock QX Revo Plus
+### Add the Roborock QX Revo Plus
 
 The official [Roborock integration](https://www.home-assistant.io/integrations/roborock/)
 is the starting point for this Qrevo-family vacuum. Exact exposed features depend
@@ -88,7 +131,7 @@ Cloud fallback is not a substitute for reliable local connectivity, and cloud
 access is still required for setup, maps, and other features. Do not forward
 these device ports through the internet router.
 
-## Customize incrementally
+### Customize incrementally
 
 - For an integration configured through **Settings → Devices & services**, add
   its domain to `services.home-assistant.extraComponents`, rebuild, then configure
@@ -111,7 +154,7 @@ dashboards, UI integration settings, and other runtime state live in
 in Nix expressions, since the Nix store is readable by local users. Use a
 runtime `secrets.yaml`/agenix setup when an integration needs YAML secrets.
 
-## Check the service
+### Check the service
 
 ```sh
 systemctl status home-assistant

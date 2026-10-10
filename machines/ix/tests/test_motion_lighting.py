@@ -12,7 +12,7 @@ POLICY=json.loads(subprocess.check_output(['nix','eval','--impure','--json','--e
 ZONES=POLICY['motionZones'];AUTOS=CONFIG['automation myggspray']
 WORKER=CONFIG['script']['lighting_motion_priority']['sequence']
 def choices(seq,key):
-    return next(c for c in seq[1]['choose'] if c['conditions']=="{{ room == '"+key+"' }}")['sequence'][0]['choose']
+    return next(s['choose'] for s in next(c for c in seq[1]['choose'] if c['conditions']=="{{ room == '"+key+"' }}")['sequence'] if 'choose' in s)
 
 class MotionPolicyTests(unittest.TestCase):
     def test_module_imports_and_restored_helpers(self):
@@ -25,14 +25,18 @@ class MotionPolicyTests(unittest.TestCase):
                 'data':{'operation':'motion','room':key,'reason':'{{ trigger.id }}'}}])
             self.assertNotIn('lighting_manual_override',json.dumps(auto))
             self.assertNotIn('lighting_manual_'+key,json.dumps(auto['conditions']))
-    def test_exact_unchanged_vacancy_and_darkness_rules(self):
+    def test_exact_vacancy_and_calibrated_darkness_rules(self):
+        self.assertEqual({key:z['darkLux'] for key,z in ZONES.items()}, {'living_kitchen':40,'bathroom':50})
         for auto,key in zip(AUTOS,['living_kitchen','bathroom']):
             z=ZONES[key];triggers={t['id']:t for t in auto['triggers']}
             self.assertEqual(triggers['idle'],{'trigger':'state','entity_id':z['motion'],'to':'off','for':{'minutes':z['idleMinutes']},'id':'idle'})
-            self.assertEqual(triggers['dark'],{'trigger':'numeric_state','entity_id':z['illuminance'],'below':50,'id':'dark'})
+            self.assertEqual(triggers['dark'],{'trigger':'numeric_state','entity_id':z['illuminance'],'below':z['darkLux'],'id':'dark'})
             self.assertEqual(triggers['recovery'],{'trigger':'time_pattern','minutes':'/1','id':'recovery'})
             on,off=choices(WORKER,key)
-            self.assertIn({'condition':'numeric_state','entity_id':z['illuminance'],'below':50},on['conditions'])
+            if key=='living_kitchen':self.assertIn({'condition':'numeric_state','entity_id':z['illuminance'],'below':40},on['conditions'])
+            else:
+                self.assertIn(z['ambient']['helper'],on['conditions'][2]['value_template'])
+                self.assertIn('float < 50',on['conditions'][2]['value_template'])
             self.assertIn({'condition':'state','entity_id':z['motion'],'state':'on'},on['conditions'])
             self.assertNotIn(z['illuminance'],json.dumps(off))
             self.assertIn(str(60*z['idleMinutes']),off['conditions'][-1]['value_template'])
@@ -52,7 +56,13 @@ class MotionPolicyTests(unittest.TestCase):
             self.assertEqual(seq[-1]['action'],'light.turn_on')
             self.assertIn('lamp.attributes.entity_id is not defined',seq[2]['variables']['needed'])
         self.assertNotIn('data',choices(WORKER,'living_kitchen')[0]['sequence'][-1])
-        self.assertEqual(choices(WORKER,'bathroom')[0]['sequence'][-1]['data'],{'brightness_pct':10,'color_temp_kelvin':2700})
+        data=choices(WORKER,'bathroom')[0]['sequence'][-1]['data']
+        self.assertEqual(data['color_temp_kelvin'],2700)
+        self.assertIn("20 if now().strftime('%H:%M:%S') < '07:00:00' else 80",data['brightness_pct'])
+        self.assertNotIn('ambient',data['brightness_pct']);self.assertNotIn('lux',data['brightness_pct'])
+        self.assertEqual(next(t for t in AUTOS[1]['triggers'] if t['id']=='schedule'),
+                         {'trigger':'time','at':['00:00:00','07:00:00'],'id':'schedule'})
+        self.assertFalse(any(t['id']=='schedule' for t in AUTOS[0]['triggers']))
     def test_recovery_cannot_independently_turn_lamps_on(self):
         router=evaluate('bilresa-lighting.nix')['script']['lighting_manual_action']['sequence']
         branch=next(c for c in router[-1]['choose'] if c['conditions']=="{{ operation == 'motion' }}")
@@ -79,6 +89,10 @@ class HomeAssistantConditionTests(unittest.IsolatedAsyncioTestCase):
                         hass.states._states[z['motion']]=State(z['motion'],motion,last_changed=dt.utcnow()-timedelta(seconds=seconds))
                         for entity,value in [(z['illuminance'],lux),(z['active'],owned),(z['manual'],manual)]:hass.states.async_set(entity,value)
                         for entity in z['lights']:hass.states.async_set(entity,light)
+                        if key=='bathroom':
+                            hass.states.async_set(z['ambient']['helper'],'ambient:'+json.dumps({
+                                'lux':float(lux) if lux not in ('unknown','unavailable') else 1,
+                                'sampled':dt.utcnow().timestamp()}))
                         selected=None
                         for i,checks in enumerate(groups):
                             try:matched=all(c.async_check(variables={'can_activate':trigger not in ['idle','recovery']}) for c in checks)
@@ -91,7 +105,9 @@ class HomeAssistantConditionTests(unittest.IsolatedAsyncioTestCase):
                 await hass.async_stop(force=True)
     async def test_actual_ha_living_kitchen_matrix(self):
         await self.check_cases('living_kitchen',[
-            ('motion','on','49','off',0,'off',0),('motion','on','50','off',0,'off',None),
+            ('motion','on','39.99','off',0,'off',0),('motion','on','40','off',0,'off',None),
+            ('motion','on','42','off',0,'off',None),('motion','on','49','off',0,'off',None),
+            ('motion','on','50','off',0,'off',None),
             ('motion','on','100','off',0,'off',None),('motion','on','unknown','off',0,'off',None),
             ('motion','on','unavailable','off',0,'off',None),('dark','on','1','off',0,'off',0),
             ('dark','off','1','off',700,'off',None),('idle','off','200','on',601,'on',1),

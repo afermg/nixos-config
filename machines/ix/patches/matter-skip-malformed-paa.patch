@@ -1,0 +1,9 @@
+--- a/matter_server/server/helpers/paa_certificates.py
++++ b/matter_server/server/helpers/paa_certificates.py
+@@ -74 +74,5 @@ async def write_paa_root_cert(
+-        cert = x509.load_pem_x509_certificate(pem_certificate.encode())
++        try:
++            cert = x509.load_pem_x509_certificate(pem_certificate.encode())
++        except ValueError:
++            LOGGER.warning("Skipping malformed PAA root certificate from %s", base_name)
++            return False

@@ -3,6 +3,9 @@
 let
   # IPv4 only, on the home Ethernet network; never a global port opening.
   homeAssistantLanRule = "-i end0 -s 192.168.1.0/24 -d 192.168.1.0/24 -p tcp --dport 8124 -m comment --comment ix-home-assistant-lan -j nixos-fw-accept";
+  # Sonos sends HTTP NOTIFY events back to SoCo's separate TCP listener.
+  # LAN IPv4 only; no global or Tailscale opening and no media playback changes.
+  sonosEventRule = "-i end0 -s 192.168.1.0/24 -d 192.168.1.0/24 -p tcp --dport 1400 -m comment --comment ix-sonos-events-lan -j nixos-fw-accept";
 in
 {
   imports = [
@@ -15,9 +18,11 @@ in
   networking.firewall.interfaces.tailscale0.allowedTCPPorts = [ 22000 ];
   networking.firewall.extraCommands = ''
     iptables -w -A nixos-fw ${homeAssistantLanRule}
+    iptables -w -A nixos-fw ${sonosEventRule}
   '';
   networking.firewall.extraStopCommands = ''
     iptables -w -D nixos-fw ${homeAssistantLanRule} 2>/dev/null || true
+    iptables -w -D nixos-fw ${sonosEventRule} 2>/dev/null || true
   '';
 
   # Separate LAN endpoint preserves HA's loopback listener and SSH tunnels.
@@ -86,15 +91,21 @@ in
       mobile_app = { };
       energy = { };
       history = { };
-      # Build-only scope guard: preserve the running two-sensor baseline.
-      # The real ix/oppy checkouts retain their pending six-sensor policy.
+      # Appliance power/energy plus the ALPSTUGA temperature history requested by the user.
+      # Extend when pairing another metering appliance; avoid broad *power*
+      # globs, which also match the Moto G Power phone's health/battery sensors.
       recorder = {
         include.entities = [
           "sensor.kitchen_grillplats_plug_fridge_energy"
           "sensor.kitchen_grillplats_plug_fridge_power"
+          "sensor.grillplats_plug_energy" # Moby plug, restored registry ID.
+          "sensor.grillplats_plug_power"
+          "sensor.grillplats_plug_energy_2" # Electronics plug.
+          "sensor.grillplats_plug_power_2"
+          "sensor.alpstuga_air_quality_monitor_temperature"
         ];
       };
-      # No default_config or host Bluetooth. Thread adds mDNS only.
+      # No default_config or host Bluetooth. Thread adds scoped mDNS.
       # HA 2026.9 migrates these initial values into its own HTTP settings.
       http = {
         server_host = "127.0.0.1";

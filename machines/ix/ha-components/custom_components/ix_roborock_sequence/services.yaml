@@ -1,0 +1,9 @@
+start:
+  name: Vacuum entire flat, then mop
+  description: Starts a whole-home vacuum-only pass. A new successful whole-home completion record and dock readiness are required before a mop-only pass. No schedule or automatic restart.
+cancel:
+  name: Cancel sequence and dock
+  description: Cancels an active sequence, stops its cleaning run and returns the robot to the dock. Does nothing if this sequence is not active.
+inspect:
+  name: Inspect sequence readiness
+  description: Read-only status from the existing integration. Does not send any robot command.

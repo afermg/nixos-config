@@ -11,6 +11,8 @@
     ./ejabberd.nix
     ./hindsight.nix
     ./services.nix
+    ./roborock-cleaning.nix
+    ./thread.nix
   ];
 
   nixpkgs.hostPlatform = "aarch64-linux";
