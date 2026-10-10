@@ -91,8 +91,8 @@ in
       mobile_app = { };
       energy = { };
       history = { };
-      # Appliance power/energy plus the ALPSTUGA temperature history requested by the user.
-      # Extend when pairing another metering appliance; avoid broad *power*
+      # All current appliance power/energy and ALPSTUGA environmental measurements.
+      # Extend when pairing another meter/monitor; avoid broad *power*
       # globs, which also match the Moto G Power phone's health/battery sensors.
       recorder = {
         include.entities = [
@@ -103,6 +103,10 @@ in
           "sensor.grillplats_plug_energy_2" # Electronics plug.
           "sensor.grillplats_plug_power_2"
           "sensor.alpstuga_air_quality_monitor_temperature"
+          "sensor.alpstuga_air_quality_monitor_humidity"
+          "sensor.alpstuga_air_quality_monitor_carbon_dioxide"
+          "sensor.alpstuga_air_quality_monitor_pm2_5"
+          "sensor.alpstuga_air_quality_monitor_air_quality"
         ];
       };
       # No default_config or host Bluetooth. Thread adds scoped mDNS.

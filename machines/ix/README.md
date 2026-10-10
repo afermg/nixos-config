@@ -223,11 +223,16 @@ settings.
 integration and its hourly, device-filtered synchronization.
 
 The Energy dashboard and History are enabled. The deployed Recorder policy
-includes the fridge, Moby and TV/setup plugs' native W/kWh sensors and the
-ALPSTUGA temperature sensor (seven entities). Phone battery/health and unrelated
-sensors are excluded. Re-enabling previously excluded meters can assign accumulated
-energy to the first new bucket: that catch-up spike is not a power surge. Extend
-`recorder.include.entities` when adding another metering appliance. Do not use
+includes all current appliance meters—the fridge, Moby and TV/setup plugs' native
+W/kWh sensors—and all ALPSTUGA environmental readings: temperature, humidity,
+CO₂, PM2.5 and categorical air quality (eleven entities total). Numeric readings
+have long-term statistics; categorical air quality uses ordinary state history
+with HA's default retention. Phone battery/health and device diagnostics remain
+excluded. New readings accumulate from inclusion onward; no history is fabricated.
+Re-enabling previously excluded meters can assign accumulated energy to the first
+new bucket: that catch-up spike is not a power surge. Extend
+`recorder.include.entities` when adding another meter or environmental measurement.
+Do not use
 broad `*power*` globs: the Moto G Power phone's entity IDs also contain that word.
 Enable disabled appliance measurement entities first; Recorder cannot create
 measurements that hardware or its integration does not expose.

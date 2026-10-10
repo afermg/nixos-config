@@ -244,7 +244,7 @@ class ApplicationPolicyTests(unittest.TestCase):
         self.assertIn("pkgs.home-assistant.python3Packages.aiohttp", text)
         self.assertNotRegex(text, r'allowedTCPPorts\s*=\s*\[[^]]*\b5580\b')
 
-    def test_home_assistant_records_electrical_measurements(self):
+    def test_home_assistant_records_all_appliance_and_alpstuga_measurements(self):
         text = (ROOT / "machines/ix/services.nix").read_text()
         self.assertIn("energy = { };", text)
         self.assertIn("history = { };", text)
@@ -258,8 +258,17 @@ class ApplicationPolicyTests(unittest.TestCase):
             "sensor.grillplats_plug_energy_2",
             "sensor.grillplats_plug_power_2",
             "sensor.alpstuga_air_quality_monitor_temperature",
+            "sensor.alpstuga_air_quality_monitor_humidity",
+            "sensor.alpstuga_air_quality_monitor_carbon_dioxide",
+            "sensor.alpstuga_air_quality_monitor_pm2_5",
+            "sensor.alpstuga_air_quality_monitor_air_quality",
         ])
+        # Avoid phone health/energy-class calorie data and device diagnostics.
+        self.assertNotIn("moto_g_power", recorder.group(1))
+        self.assertNotIn("thread_", recorder.group(1))
         self.assertNotIn('"sensor.*power*"', text)
+        self.assertNotIn("include.entity_globs", text)
+        self.assertNotIn("include.domains", text)
         self.assertNotRegex(text, r"(?m)^\s*default_config\s*=")
 
     def test_home_assistant_explicitly_enables_companion_app(self):

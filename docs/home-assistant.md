@@ -24,9 +24,12 @@ re-pair devices when rebuilding.
   minutes**. Bathroom uses **20% midnight–07:00 / 80% otherwise**, at 2700 K in
   `America/New_York`, with a **five-minute** vacancy timer. Last-reported low lux
   remains usable when unchanged; an expired ambient sample no longer blocks motion.
-- **History:** records fridge, TV/setup and Moby plug power/energy plus ALPSTUGA
-  temperature. Re-enabling recording produced historical catch-up spikes; old
-  missing intervals cannot be reconstructed or compared as instantaneous usage.
+- **History:** records all current appliance power/energy meters (fridge,
+  TV/setup and Moby) plus every ALPSTUGA environmental measurement: **temperature,
+  humidity, CO₂, PM2.5 and air-quality status**. Numeric measurements support
+  long-term statistics; categorical air quality uses ordinary state history.
+  New sensors accumulate history from inclusion onward, with no backfill.
+  Earlier meter catch-up spikes do not represent instantaneous power surges.
 - **Cleaning:** the **Cleaning** dashboard offers user-started whole-home
   vacuum-then-mop and cancel/dock. A fresh successful completion record—not merely
   docking—is required before mopping. No automatic start or restart resumption.
