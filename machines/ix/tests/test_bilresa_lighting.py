@@ -40,7 +40,9 @@ class ButtonPolicyTests(unittest.TestCase):
                      'lighting_resume_automatic','room_lights_power','room_lights_proportional'):
             self.assertEqual(SCRIPTS[name]['sequence'][-1]['action'], 'script.lighting_manual_action')
     def test_manual_ownership_is_persistent_without_disabling_motion(self):
-        for zone in ZONES.values():self.assertNotIn('initial',CONFIG['input_boolean'][zone['manual'].split('.')[1]])
+        for zone in ZONES.values():
+            for helper in [zone['manual'],zone['offHold']]:
+                self.assertNotIn('initial',CONFIG['input_boolean'][helper.split('.')[1]])
         seq=SCRIPTS['lighting_take_manual_control']['sequence']
         for step,zone in zip(seq[2:],ZONES.values()):
             actions=step['choose'][0]['sequence']
@@ -101,6 +103,7 @@ class ButtonRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.seed_ambient(100)
         for zone in ZONES.values():
             self.hass.states.async_set(zone['manual'],'off')
+            self.hass.states.async_set(zone['offHold'],'off')
             self.hass.states.async_set(zone['automation'],'on')
             self.hass.states.async_set(zone['motion'],'off')
             self.hass.states.async_set(zone['illuminance'],'100')
@@ -162,12 +165,15 @@ class ButtonRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.calls[-1],('light','turn_off',{'entity_id':LIGHTS}))
         for zone in ZONES.values():
             self.assertEqual(self.hass.states.get(zone['manual']).state,'on')
+            self.assertEqual(self.hass.states.get(zone['offHold']).state,'on')
+            self.assertEqual(self.hass.states.get(zone['active']).state,'off')
             self.assertEqual(self.hass.states.get(zone['automation']).state,'on')
         self.calls.clear();events=[]
         self.hass.bus.async_listen('ix_resume_automatic_lighting',lambda event:events.append(event))
         await self.run_script('lighting_resume_automatic');await self.hass.async_block_till_done()
         self.assertEqual([x[:2] for x in self.calls],[('input_boolean','turn_off')]+[('input_boolean','turn_off'),('automation','turn_on')]*2)
         self.assertEqual({event.data['room'] for event in events},set(ZONES))
+        for z in ZONES.values():self.assertEqual(self.hass.states.get(z['offHold']).state,'off')
         for variables in ({'operation':'bad'},{'operation':'brightness','scale':0},
                           {'operation':'brightness','scale':'invalid'},{'operation':'room_off','room':'bad'},
                           {'operation':'level','level':-1},{'operation':'level','level':256},
@@ -583,7 +589,7 @@ class ButtonRuntimeTests(unittest.IsolatedAsyncioTestCase):
             {'operation':'colour','room':'bedroom','hs':[0,100]}]:
             self.calls.clear();await self.run_script('lighting_manual_action',data)
             self.assertFalse(any(c[0]=='light' for c in self.calls),data)
-    async def test_immediate_priority_after_room_off_and_all_off(self):
+    async def test_all_off_beats_occupied_motion_but_room_off_keeps_existing_policy(self):
         await self.setup_priority_runtime();await self.occupy_dark(*ZONES)
         for key in ['living_kitchen','bathroom']:
             before=self.hass.states.get(ZONES[key]['motion']).last_changed
@@ -592,12 +598,104 @@ class ButtonRuntimeTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(self.hass.states.get(ZONES[key]['motion']).last_changed,before)
         self.hass.states.async_set('switch.appliance','on')
         await self.run_script('bilresa_all_lights_off');await self.hass.async_block_till_done()
-        for key in ZONES:self.assert_priority_state(key)
-        for entity in LIGHTS[:2]:self.assertEqual(self.hass.states.get(entity).state,'off')
+        for entity in LIGHTS:self.assertEqual(self.hass.states.get(entity).state,'off')
+        for z in ZONES.values():
+            self.assertEqual(self.hass.states.get(z['offHold']).state,'on')
+            self.assertEqual(self.hass.states.get(z['manual']).state,'on')
+            self.assertEqual(self.hass.states.get(z['active']).state,'off')
+            self.assertEqual(self.hass.states.get(z['automation']).state,'on')
         self.assertEqual(self.hass.states.get('switch.appliance').state,'on')
         self.assertFalse(any(d=='automation' and service=='turn_off' for d,service,_ in self.calls))
         for d,service,data in self.calls:
             if d=='light':self.assertTrue(set(data['entity_id'])<=set(LIGHTS))
+    async def test_all_off_hold_blocks_every_motion_route_and_preserves_manual_controls(self):
+        await self.setup_priority_runtime();await self.occupy_dark(*ZONES)
+        def off_with_guard(call):
+            for z in ZONES.values():
+                self.assertEqual(self.hass.states.get(z['offHold']).state,'on')
+                self.assertEqual(self.hass.states.get(z['active']).state,'off')
+            self.fake_light(call)
+        self.hass.services.async_register('light','turn_off',off_with_guard)
+        await self.run_script('bilresa_all_lights_off');await self.hass.async_block_till_done()
+        self.calls.clear()
+        for key,z in ZONES.items():
+            for reason in ['motion','dark','lamp','manual','schedule','startup','resume','recovery','idle']:
+                await self.run_script('lighting_manual_action',{'operation':'motion','room':key,'reason':reason})
+            self.hass.states.async_set(z['motion'],'off');await self.hass.async_block_till_done()
+            self.hass.states.async_set(z['illuminance'],'unknown')
+            self.hass.states.async_set(z['illuminance'],'1');self.hass.states.async_set(z['motion'],'on')
+            # A stale restored active flag cannot bypass the explicit hold.
+            self.hass.states.async_set(z['active'],'on')
+            await self.run_script('lighting_manual_action',{'operation':'motion','room':key,'reason':'startup'})
+        await self.run_script('lighting_manual_action',{'operation':'ambient','room':'bathroom'})
+        await self.hass.async_block_till_done()
+        self.assertFalse(any(c[0]=='light' for c in self.calls))
+        self.assertTrue(all(self.hass.states.get(e).state=='off' for e in LIGHTS))
+        # Deliberate manual on/brightness remains possible; it does not resume motion.
+        await self.run_script('room_lights_power',{'room':'bathroom','power':'on'})
+        await self.run_script('lighting_manual_action',{'operation':'level','room':'bathroom','level':123})
+        await self.hass.async_block_till_done()
+        self.assertEqual(self.hass.states.get(LIGHTS[5]).attributes['brightness'],123)
+        for z in ZONES.values():self.assertEqual(self.hass.states.get(z['offHold']).state,'on')
+
+    async def test_all_four_remotes_resume_only_their_held_motion_group(self):
+        from homeassistant.core import State
+        from homeassistant.util import dt
+        await self.setup_priority_runtime();await self.occupy_dark(*ZONES)
+        for room,buttons in POLICY['bilresa'].items():
+            own='living_kitchen' if room=='living_kitchen' else 'bathroom'
+            other='bathroom' if own=='living_kitchen' else 'living_kitchen'
+            for index in range(2):
+                for side in ['bottom','top']:
+                    self.calls.clear()
+                    await self.run_sequence(AUTOMATION['actions'],{'trigger':{'id':side,
+                        'to_state':State(buttons[side][index],dt.utcnow().isoformat(),{'event_type':'long_press'})}})
+                    await self.hass.async_block_till_done()
+                    if side=='bottom':
+                        self.assertTrue(all(self.hass.states.get(e).state=='off' for e in LIGHTS))
+                        self.assertFalse(any(c[:2]==('light','turn_on') for c in self.calls))
+                        for z in ZONES.values():self.assertEqual(self.hass.states.get(z['offHold']).state,'on')
+                    else:
+                        self.assert_priority_state(own)
+                        self.assertEqual(self.hass.states.get(ZONES[own]['offHold']).state,'off')
+                        self.assertEqual(self.hass.states.get(ZONES[other]['offHold']).state,'on')
+                        self.assertTrue(all(self.hass.states.get(e).state=='off' for e in ZONES[other]['lights']))
+                        self.assertTrue(all(set(c[2]['entity_id'])<=set(ZONES[own]['lights']) for c in self.calls if c[0]=='light'))
+
+    async def test_motion_fails_closed_until_hold_state_is_known(self):
+        await self.setup_priority_runtime()
+        for z in ZONES.values():self.hass.states.async_set(z['offHold'],'unknown')
+        await self.occupy_dark(*ZONES)
+        self.assertTrue(all(self.hass.states.get(e).state=='off' for e in LIGHTS))
+        for key,z in ZONES.items():
+            for value in ['unknown','unavailable','on']:
+                self.hass.states.async_set(z['offHold'],value);self.calls.clear()
+                await self.run_script('lighting_manual_action',{'operation':'motion','room':key,'reason':'startup'})
+                await self.hass.async_block_till_done()
+                self.assertFalse(any(c[0]=='light' for c in self.calls))
+
+    async def test_queued_all_off_wins_after_inflight_motion_command(self):
+        import asyncio
+        await self.setup_priority_runtime();started=asyncio.Event();release=asyncio.Event()
+        async def delayed_on(call):
+            started.set();await release.wait();self.fake_light(call)
+        self.hass.services.async_register('light','turn_on',delayed_on)
+        z=ZONES['bathroom'];self.hass.states.async_set(z['illuminance'],'1');self.hass.states.async_set(z['motion'],'on')
+        task=None
+        try:
+            await asyncio.wait_for(started.wait(),5)
+            task=asyncio.create_task(self.run_script('bilresa_all_lights_off'))
+            await asyncio.sleep(0);release.set();await asyncio.wait_for(task,10)
+            await self.hass.async_block_till_done()
+            self.assertTrue(all(self.hass.states.get(e).state=='off' for e in LIGHTS))
+            off_index=max(i for i,c in enumerate(self.calls) if c[:2]==('light','turn_off'))
+            self.assertFalse(any(c[:2]==('light','turn_on') for c in self.calls[off_index+1:]))
+            for zone in ZONES.values():self.assertEqual(self.hass.states.get(zone['offHold']).state,'on')
+        finally:
+            release.set()
+            if task and not task.done():task.cancel()
+            if task:await asyncio.gather(task,return_exceptions=True)
+
     async def test_native_off_and_late_physical_reports_cannot_defeat_priority(self):
         from homeassistant.core import Context
         await self.setup_priority_runtime();await self.occupy_dark('bathroom')
@@ -833,10 +931,14 @@ class ButtonRuntimeTests(unittest.IsolatedAsyncioTestCase):
                     if room=='living_kitchen':
                         self.assertEqual({self.hass.states.get(e).attributes['brightness'] for e in members},
                                          {255 if side=='top' else 192})
-                for z in ZONES.values():self.hass.states.async_set(z['manual'],'on')
+                for z in ZONES.values():
+                    self.hass.states.async_set(z['manual'],'on')
+                    self.hass.states.async_set(z['offHold'],'on')
                 self.calls.clear();await press(buttons['top'][index],'top','long_press')
                 self.assertEqual(self.hass.states.get(ZONES[own]['manual']).state,'off')
                 self.assertEqual(self.hass.states.get(ZONES[other]['manual']).state,'on')
+                self.assertEqual(self.hass.states.get(ZONES[own]['offHold']).state,'off')
+                self.assertEqual(self.hass.states.get(ZONES[other]['offHold']).state,'on')
                 self.assertFalse(any(c[0]=='light' for c in self.calls))
                 self.calls.clear();await press(buttons['bottom'][index],'bottom','long_press')
                 self.assertIn(('light','turn_off',{'entity_id':LIGHTS}),self.calls)

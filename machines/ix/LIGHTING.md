@@ -16,21 +16,22 @@ Four registered BILRESA remotes have independent control groups:
 - Only **bottom long-press (all-off)** crosses groups. Top long-press resumes
   only the group's motion zone. Double-clicks select only scenes whose entire
   membership is inside the group; unrelated explicit OFF members also exclude a
-  scene. Bathroom's automatic clock-based level still takes priority when occupied.
+  scene. **All off pauses motion in both groups until explicitly resumed.**
 
 Each remote uses this mapping:
 
 | Button | Short press | Double-click | Long press |
 | --- | --- | --- | --- |
 | Top | Group brighter (×1.25) | Next group-only Button scene | Resume group's automatic lighting |
-| Bottom | Group dimmer (×0.8) | Previous group-only Button scene | All six lamps off |
+| Bottom | Group dimmer (×0.8) | Previous group-only Button scene | All six lamps off; hold motion off |
 
 Commands never include smart-plug outlets, appliances or ix. Brightness changes
 only currently lit, available, dimmable bulbs and preserve white temperature.
 Living/kitchen uses one level derived from its brightest lit lamp, capped at255;
 this corrects unequal levels even at the maximum. Bedroom/bathroom retain their
 relative brightness, except bathroom automatic priority. Off bulbs stay off
-unless occupied darkness requires automatic lighting in that area.
+unless occupied darkness requires automatic lighting in that area and no All off
+hold is active.
 
 Device names and all eight event IDs were verified against HA's registry.
 Exact bindings live in `lighting-policy.nix` under `bilresa`; no name/area wildcard
@@ -43,9 +44,17 @@ and long-release events do not execute lighting commands.
 
 ## Motion priority, manual control and resume
 
-**Occupied darkness wins immediately**, including while occupancy stays on.
-A scene, room slider or All lights off cannot hold a motion-controlled area off
-when occupied and the applicable ambient reading is below the zone's cutoff:
+**Button All off takes priority over motion.** Bottom long-press switches off all
+six lamps and sets a persistent, separate hold for each motion zone. Motion edges,
+lux changes, lamp reports, clock boundaries, ambient sampling and HA restarts do
+not clear it. **Top long-press resumes only that remote's group** (1/2: bathroom;
+3/4: living/kitchen). Resume both groups separately, or call
+`script.lighting_resume_automatic` with `room: all`. Manual On, scenes and sliders
+remain usable without clearing the hold. No automations are disabled.
+
+Without an All off hold, **occupied darkness wins immediately**, including while
+occupancy stays on. A scene or room slider cannot hold a motion-controlled area
+off when occupied and the applicable ambient reading is below the zone's cutoff:
 **40 lux for living/kitchen**, **50 lux for bathroom**. Living/kitchen uses current
 lux; bathroom accepts a last-reported low reading and latches an owned dark cycle
 while ON (see below). Missing or stale baseline metadata no longer blocks known
@@ -72,10 +81,14 @@ including explicit OFF members of a scene. Unaffected rooms, appliance plugs
 and unavailable/unknown sensors cannot acquire automatic priority. The persistent
 helpers `input_boolean.lighting_manual_living_kitchen` and
 `input_boolean.lighting_manual_bathroom` apply only until resumed or dark occupancy
-wins. The legacy `lighting_manual_override` remains unused for compatibility.
+wins. The separate restored helpers
+`input_boolean.lighting_all_off_hold_living_kitchen` and
+`input_boolean.lighting_all_off_hold_bathroom` instead block motion until explicit
+Resume; unknown/unavailable hold state fails closed. The legacy
+`lighting_manual_override` remains unused for compatibility.
 
-`script.lighting_resume_automatic` with a room clears just that area's manual
-ownership; top long-press resumes only that remote's motion zone; an explicit all-room
+`script.lighting_resume_automatic` with a room clears just that area's All off hold
+and manual ownership; top long-press resumes only that remote's motion zone; an explicit all-room
 script invocation resumes both. Resume does not blindly toggle
 all lamps. Native human light calls resolve entity/area/device/label targets
 through the six-lamp allowlist; automatic calls cannot feed back into manual
@@ -114,7 +127,7 @@ not deleted. The number and white-control entities are not physical devices or
 allowlist members. There is no state-sync
 write loop; scenes, buttons and motion are reflected from actual lamp state.
 
-Motion priority can immediately move the slider back: living/kitchen must be
+Unless held by All off, motion priority can immediately move the slider back: living/kitchen must be
 on when dark and occupied; bathroom must use its clock-selected **20% night / 80% day**
 setting, both at 2700K.
 Off, unavailable and unlisted lamps are not included in proportional adjustments
@@ -159,9 +172,9 @@ candidates performs no command and does not pause motion.
 
 `script.bilresa_cycle_scenes` accepts `direction: next` (the default) or
 `direction: previous`. Both directions use the shared queue;
-occupied darkness overrides conflicting scene settings immediately. Top long-press
-clears non-priority ownership only for the remote's group. Bottom long-press requests all
-six lamps off, but dark occupied motion areas come back on.
+occupied darkness overrides conflicting scene settings unless an All off hold is
+active. Top long-press clears the hold and manual ownership only for the remote's
+group. Bottom long-press turns all six lamps off and holds both motion zones off.
 
 Only nonempty scenes containing individual allowlisted lamps qualify. Scenes
 with plugs, other entities, light groups or unavailable scene entities are
@@ -188,14 +201,15 @@ The native temperature slider may require turning on the room via brightness
 first. Bedroom controls never change living/kitchen or bathroom lamps.
 Unknown/group/appliance targets remain excluded.
 
-Motion priority is unchanged: occupied dark bathroom lighting can immediately
-restore its automatic20%/80%,2700K profile. These controls do not enable Party mode
-or suspend automatic lighting. A multicolour Party mode is not supported by
+Without an All off hold, occupied dark bathroom lighting can immediately restore
+its automatic20%/80%,2700K profile. White controls neither clear an existing hold
+nor create one, and do not enable Party mode. A multicolour Party mode is not supported by
 these bulbs. No lamp commands are sent during installation.
 
 ## Automatic motion lighting
 
-`motion-lighting.nix` gives occupied darkness priority over manual/scene settings:
+When no All off hold is active, `motion-lighting.nix` gives occupied darkness
+priority over manual/scene settings:
 
 - Living/kitchen MYGGSPRAY: occupancy
   `binary_sensor.myggspray_wrlss_mtn_sensor_occupancy`, illuminance
@@ -256,7 +270,8 @@ Every-minute recovery checks retry eligible shutoffs and handle lost timers
 across HA restarts. They do not independently turn lamps on. Restart establishes
 a fresh clear interval, possibly followed by up to one recovery-check minute.
 Non-priority manual control clears automatic ownership. Dark occupancy reclaims
-it immediately, even if the manual helper was restored on across a restart.
+it immediately, even if the manual helper was restored on across a restart,
+**except when the separate All off hold is set**.
 
 ## Source and tests
 
@@ -271,9 +286,11 @@ IX_HA_DEPENDENCY_HELPER=~/.local/state/matter-time-sync/configure-energy.py \
   python3 -B -m unittest discover -s machines/ix/tests -p 'test_*lighting*.py'
 ```
 
-The matching HA runtime passes all **41 lighting tests** without skips, using
-disposable registries, real HA triggers/conditions/scripts and mocked lamp services.
-Coverage includes45 motion-condition cases, immediate manual/native Off reversal,
+The matching HA runtime tests use disposable registries, real HA
+triggers/conditions/scripts and mocked lamp services. All off tests cover
+occupied motion, queued/in-flight commands, every motion entry route, restored or
+unknown hold state, manual On while held, and all four remotes' scoped Resume.
+Coverage also includes motion-condition cases and ordinary manual/native Off reversal,
 late device reports, darkness/sensor recovery without new motion, in-flight
 sensor changes, scene/brightness precedence,
 no-feedback rounding, vacancy

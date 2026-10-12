@@ -219,6 +219,22 @@ class ApplicationPolicyTests(unittest.TestCase):
         for name in ("yaml", "yml", "json", "yaml.decrypted"):
             self.assertIn("/secrets/blocky-private." + name, ignored)
 
+    def test_home_assistant_is_no_longer_configured_on_moby(self):
+        host = (ROOT / "machines/moby/default.nix").read_text()
+        self.assertNotIn("./home-assistant.nix", host)
+        self.assertNotIn("services.home-assistant", host)
+        self.assertFalse((ROOT / "machines/moby/home-assistant.nix").exists())
+
+    def test_home_assistant_documentation_points_to_ix(self):
+        overview = (ROOT / "docs/home-assistant.md").read_text()
+        readme = (ROOT / "readme.org").read_text()
+        self.assertIn("Home Assistant Core on ix", overview)
+        self.assertIn("Moby no longer imports or enables Home Assistant", overview)
+        self.assertNotIn("machines/moby/home-assistant.nix", overview)
+        self.assertNotIn("nixos-rebuild switch", overview)
+        self.assertIn("Home Assistant on ix", readme)
+        self.assertNotIn("Minimal Home Assistant on Moby", readme)
+
     def test_home_assistant_is_minimal_with_explicit_roborock_dependencies(self):
         text = (ROOT / "machines/ix/services.nix").read_text()
         self.assertIn('server_host = "127.0.0.1";', text)

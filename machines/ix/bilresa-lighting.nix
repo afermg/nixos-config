@@ -29,7 +29,7 @@ let
                     and ${if zone ? ambient then ambient.valid else "(is_number(states('${zone.illuminance}')) and states('${zone.illuminance}') | float(0) < ${toString zone.darkLux})"}) }}
       '';
       # All motion and wrapped manual actions share the router queue now. Never
-      # disable an automation: occupied darkness must always be able to win.
+      # disable an automation. Only the explicit All off hold blocks priority.
       sequence = [
         { action = "input_boolean.turn_on"; target.entity_id = zone.manual; }
         { action = "input_boolean.turn_off"; target.entity_id = zone.active; }
@@ -91,6 +91,10 @@ in
       name = builtins.replaceStrings [ "input_boolean." ] [ "" ] zone.manual;
       value = { name = "${zone.name} - Manual lighting (dark occupancy wins)"; icon = "mdi:hand-back-right"; };
       # No initial values: restore each area's manual ownership independently.
+    }) (builtins.attrValues zones)) // builtins.listToAttrs (builtins.map (zone: {
+      name = builtins.replaceStrings [ "input_boolean." ] [ "" ] zone.offHold;
+      value = { name = "${zone.name} - Motion paused by All off"; icon = "mdi:motion-sensor-off"; };
+      # No initial: an explicit All off survives restarts until scoped Resume.
     }) (builtins.attrValues zones));
     script = {
       lighting_take_manual_control = {
@@ -163,7 +167,7 @@ in
                 choose = [{
                   conditions = "{{ '${key}' in resume_rooms }}";
                   sequence = [
-                    { action = "input_boolean.turn_off"; target.entity_id = zone.manual; }
+                    { action = "input_boolean.turn_off"; target.entity_id = [ zone.offHold zone.manual ]; }
                     { action = "automation.turn_on"; target.entity_id = zone.automation; }
                     { event = "ix_resume_automatic_lighting"; event_data.room = key; }
                   ];
@@ -222,7 +226,15 @@ in
                   }
                   {
                     conditions = "{{ operation == 'all_off' }}";
-                    sequence = [{ action = "light.turn_off"; target.entity_id = lights; }];
+                    # Latch before the lamp command, including if a bulb fails.
+                    # Queued motion/lamp/ambient reports cannot undo this hold.
+                    sequence = [
+                      { action = "input_boolean.turn_on";
+                        target.entity_id = builtins.concatMap (zone: [ zone.offHold zone.manual ]) (builtins.attrValues zones); }
+                      { action = "input_boolean.turn_off";
+                        target.entity_id = builtins.map (zone: zone.active) (builtins.attrValues zones); }
+                      { action = "light.turn_off"; target.entity_id = lights; }
+                    ];
                   }
                   {
                     conditions = "{{ operation in ['room_on', 'room_off'] and targets | count > 0 }}";
@@ -320,6 +332,7 @@ in
       };
       bilresa_all_lights_off = {
         alias = "BILRESA - All lights off";
+        description = "Turn off all six lamps and hold motion off until top long-press resumes each remote's group.";
         icon = "mdi:lightbulb-group-off";
         mode = "queued";
         sequence = [ (dispatch "all_off" { }) ];
@@ -330,7 +343,7 @@ in
         id = "bilresa_manual_lighting";
         initial_state = true;
         alias = "BILRESA - Manual lighting controls";
-        description = "1/2: bedroom+bathroom; 3/4: living+kitchen at equal brightness. Short adjusts only the group; double cycles group-only scenes; top long resumes that group's motion. Bottom long remains global all-off.";
+        description = "1/2: bedroom+bathroom; 3/4: living+kitchen at equal brightness. Short adjusts only the group; double cycles group-only scenes; top long resumes that group's motion. Bottom long is global all-off with a persistent motion hold until scoped Resume.";
         mode = "queued";
         max = 20;
         triggers = [

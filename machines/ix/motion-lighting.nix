@@ -17,7 +17,9 @@ let
   priorityChoice = key:
     let zone = zones.${key}; in {
       conditions = "{{ room == '${key}' }}";
-      sequence = (if zone ? ambient then [{ action = "script.lighting_bathroom_sample_ambient"; }] else []) ++ [{ choose = [
+      # Fail closed while a hold is on or its restored state is not yet known.
+      sequence = [{ condition = "state"; entity_id = zone.offHold; state = "off"; }]
+        ++ (if zone ? ambient then [{ action = "script.lighting_bathroom_sample_ambient"; }] else []) ++ [{ choose = [
         {
           conditions = [
             { condition = "template"; value_template = "{{ can_activate | default(false) | bool }}"; }
@@ -70,7 +72,7 @@ let
     let zone = zones.${key}; in {
       inherit id;
       alias = name;
-      description = "Low-light occupancy overrides manual/scenes; bathroom brightness is 20% midnight-07:00, otherwise 80% (local time). Lamp-off lux only gates activation. Clear for ${toString zone.idleMinutes} minutes before automatic off. Managed in Nix.";
+      description = "All off pauses motion until scoped Resume. Otherwise low-light occupancy overrides manual/scenes; bathroom brightness is 20% midnight-07:00, otherwise 80% (local time). Lamp-off lux only gates activation. Clear for ${toString zone.idleMinutes} minutes before automatic off. Managed in Nix.";
       mode = "queued"; max = 5; initial_state = true;
       conditions = [
         { condition = "template"; value_template = "{{ trigger.id != 'resume' or trigger.event.data.get('room', 'all') in ['all', '${key}'] }}"; }
@@ -143,7 +145,7 @@ in
     }];
     script.lighting_motion_priority = {
       alias = "Lighting - Reconcile motion priority";
-      description = "Internal queue worker: current dark occupancy wins; vacancy timers remain unchanged.";
+      description = "Internal queue worker: All off hold wins; otherwise current dark occupancy wins. Vacancy timers remain unchanged.";
       mode = "queued"; max = 20;
       sequence = [
         { condition = "template"; value_template = "{{ room | default('') in ${builtins.toJSON (builtins.attrNames zones)} }}"; }

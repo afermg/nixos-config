@@ -246,7 +246,10 @@ no history from before recording was enabled can be recovered.
 
 [LIGHTING.md](LIGHTING.md) documents six white-spectrum lamps and four BILRESA
 remotes:1/2 control bedroom+bathroom;3/4 control living+kitchen at equal brightness
-for lit lamps. Only the dedicated all-off command crosses groups. Living/kitchen
+for lit lamps. Only the dedicated all-off command crosses groups: it turns all
+lamps off and holds motion off until top long-press explicitly resumes each group.
+The hold survives HA restarts; manual On/scene/slider controls still work.
+Living/kitchen
 motion uses a40lux cutoff and10-minute vacancy timer. Bathroom brightness is20%
 midnight–07:00 and80% otherwise (local time), with a five-minute vacancy timer.
 Low unchanged lux does not expire out of eligibility. Shared white controls and
