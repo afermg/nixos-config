@@ -94,8 +94,31 @@ in
     }) (builtins.attrValues zones)) // builtins.listToAttrs (builtins.map (zone: {
       name = builtins.replaceStrings [ "input_boolean." ] [ "" ] zone.offHold;
       value = { name = "${zone.name} - Motion paused by All off"; icon = "mdi:motion-sensor-off"; };
-      # No initial: an explicit All off survives restarts until scoped Resume.
+      # Retain identities/ownership bookkeeping; only the timer gates motion.
     }) (builtins.attrValues zones));
+    timer = builtins.listToAttrs (builtins.map (zone: {
+      name = builtins.replaceStrings [ "timer." ] [ "" ] zone.offTimer;
+      value = { name = "${zone.name} - All off motion pause";
+        duration = "00:00:30"; restore = true; icon = "mdi:timer-sand"; };
+    }) (builtins.attrValues zones));
+    # Idle also covers cancellation and an expiry while HA was stopped. Reload
+    # reconciliation prevents a missed event from leaving stale ownership behind.
+    "automation lighting all off expiry" = builtins.map (key: let zone = zones.${key}; in {
+      id = "lighting_all_off_expiry_${key}";
+      alias = "${zone.name} - Resume motion after All off";
+      initial_state = true; mode = "queued"; max = 5;
+      triggers = [
+        { trigger = "state"; entity_id = zone.offTimer; to = "idle"; }
+        { trigger = "homeassistant"; event = "start"; }
+        { trigger = "event"; event_type = "automation_reloaded"; }
+      ];
+      conditions = [
+        { condition = "state"; entity_id = zone.offTimer; state = "idle"; }
+        { condition = "state"; entity_id = zone.offHold; state = "on"; }
+      ];
+      actions = [{ action = "script.lighting_manual_action";
+        data = { operation = "expire_all_off"; room = key; }; }];
+    }) (builtins.attrNames zones);
     script = {
       lighting_take_manual_control = {
         alias = "Lighting - Take manual control";
@@ -114,8 +137,8 @@ in
         mode = "queued";
         max = 20;
         sequence = [
-          { condition = "template"; value_template = "{{ operation | default('') in ['scene', 'brightness', 'level', 'temperature', 'all_off', 'room_on', 'room_off', 'resume', 'takeover', 'motion', 'ambient'] }}"; }
-          { condition = "template"; value_template = "{{ operation not in ['room_on', 'room_off', 'brightness', 'level', 'resume', 'motion', 'scene'] or room | default('all') in ${builtins.toJSON ((builtins.attrNames policy.roomAreas) ++ [ "all" ])} }}"; }
+          { condition = "template"; value_template = "{{ operation | default('') in ['scene', 'brightness', 'level', 'temperature', 'all_off', 'room_on', 'room_off', 'resume', 'expire_all_off', 'takeover', 'motion', 'ambient'] }}"; }
+          { condition = "template"; value_template = "{{ operation not in ['room_on', 'room_off', 'brightness', 'level', 'resume', 'expire_all_off', 'motion', 'scene'] or room | default('all') in ${builtins.toJSON ((builtins.attrNames policy.roomAreas) ++ [ "all" ])} }}"; }
           { condition = "template"; value_template = "{{ operation != 'ambient' or room | default('') == 'bathroom' }}"; }
           { condition = "template"; value_template = "{{ operation != 'temperature' or room | default('') in ${builtins.toJSON policy.rooms} }}"; }
           { condition = "template"; value_template = "{{ operation != 'temperature' or (is_number(kelvin | default(none)) and 2202 <= kelvin | float <= 6535) }}"; }
@@ -154,6 +177,19 @@ in
             ''; }
           {
             choose = [{
+              conditions = "{{ operation == 'expire_all_off' }}";
+              sequence = builtins.map (key: let zone = zones.${key}; in {
+                choose = [{
+                  # Recheck inside the shared queue: an older expiry must never
+                  # clear a fresh 30-second pause from a subsequent All off.
+                  conditions = "{{ room == '${key}' and is_state('${zone.offTimer}', 'idle') and is_state('${zone.offHold}', 'on') }}";
+                  sequence = [
+                    { action = "input_boolean.turn_off"; target.entity_id = [ zone.offHold zone.manual ]; }
+                    { event = "ix_resume_automatic_lighting"; event_data.room = key; }
+                  ];
+                }];
+              }) (builtins.attrNames zones);
+            } {
               conditions = "{{ operation == 'resume' }}";
               sequence = [
                 { variables.resume_rooms = ''
@@ -168,6 +204,7 @@ in
                   conditions = "{{ '${key}' in resume_rooms }}";
                   sequence = [
                     { action = "input_boolean.turn_off"; target.entity_id = [ zone.offHold zone.manual ]; }
+                    { action = "timer.cancel"; target.entity_id = zone.offTimer; }
                     { action = "automation.turn_on"; target.entity_id = zone.automation; }
                     { event = "ix_resume_automatic_lighting"; event_data.room = key; }
                   ];
@@ -226,9 +263,12 @@ in
                   }
                   {
                     conditions = "{{ operation == 'all_off' }}";
-                    # Latch before the lamp command, including if a bulb fails.
-                    # Queued motion/lamp/ambient reports cannot undo this hold.
+                    # Start/restart a bounded pause before any lamp command.
+                    # No blocking delay: manual controls keep using the queue.
                     sequence = [
+                      { action = "timer.start";
+                        target.entity_id = builtins.map (zone: zone.offTimer) (builtins.attrValues zones);
+                        data.duration = "00:00:30"; }
                       { action = "input_boolean.turn_on";
                         target.entity_id = builtins.concatMap (zone: [ zone.offHold zone.manual ]) (builtins.attrValues zones); }
                       { action = "input_boolean.turn_off";
@@ -332,7 +372,7 @@ in
       };
       bilresa_all_lights_off = {
         alias = "BILRESA - All lights off";
-        description = "Turn off all six lamps and hold motion off until top long-press resumes each remote's group.";
+        description = "Turn off all six lamps and pause motion for 30 seconds. Another All off restarts the countdown; top long-press resumes its group early.";
         icon = "mdi:lightbulb-group-off";
         mode = "queued";
         sequence = [ (dispatch "all_off" { }) ];
@@ -343,7 +383,7 @@ in
         id = "bilresa_manual_lighting";
         initial_state = true;
         alias = "BILRESA - Manual lighting controls";
-        description = "1/2: bedroom+bathroom; 3/4: living+kitchen at equal brightness. Short adjusts only the group; double cycles group-only scenes; top long resumes that group's motion. Bottom long is global all-off with a persistent motion hold until scoped Resume.";
+        description = "1/2: bedroom+bathroom; 3/4: living+kitchen at equal brightness. Short adjusts only the group; double cycles group-only scenes; top long resumes that group's motion. Bottom long is global all-off with a 30-second motion pause, restarted by another All off.";
         mode = "queued";
         max = 20;
         triggers = [

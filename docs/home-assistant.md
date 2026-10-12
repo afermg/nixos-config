@@ -17,9 +17,9 @@ re-pair devices when rebuilding.
   also provides the matching Matter OTA helper and Ethernet-scoped mDNS.
 - **Lighting:** six white-spectrum bulbs. BILRESA **1/2 control bedroom+bathroom**;
   **3/4 control living+kitchen**, with equal brightness for lit lamps. Scenes and
-  resume are group-scoped. Bottom long-press turns all lamps off and **holds
-  motion off**, including across restarts, until top long-press explicitly resumes
-  each group. White-only controls replace the redundant Rooms
+  resume are group-scoped. Bottom long-press turns all lamps off and **pauses
+  motion for 30 seconds**, then automatically resumes it. Another All off restarts
+  the countdown; top long-press resumes its group early. White-only controls replace the redundant Rooms
   dashboard. Favourite Kelvin presets are saved in HA's entity settings.
 - **Motion:** living/kitchen turns on below **40 lux**, then off after **10 clear
   minutes**. Bathroom uses **20% midnight–07:00 / 80% otherwise**, at 2700 K in

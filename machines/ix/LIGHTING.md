@@ -16,14 +16,14 @@ Four registered BILRESA remotes have independent control groups:
 - Only **bottom long-press (all-off)** crosses groups. Top long-press resumes
   only the group's motion zone. Double-clicks select only scenes whose entire
   membership is inside the group; unrelated explicit OFF members also exclude a
-  scene. **All off pauses motion in both groups until explicitly resumed.**
+  scene. **All off pauses motion in both groups for 30 seconds.**
 
 Each remote uses this mapping:
 
 | Button | Short press | Double-click | Long press |
 | --- | --- | --- | --- |
 | Top | Group brighter (×1.25) | Next group-only Button scene | Resume group's automatic lighting |
-| Bottom | Group dimmer (×0.8) | Previous group-only Button scene | All six lamps off; hold motion off |
+| Bottom | Group dimmer (×0.8) | Previous group-only Button scene | All six lamps off; pause motion for 30 seconds |
 
 Commands never include smart-plug outlets, appliances or ix. Brightness changes
 only currently lit, available, dimmable bulbs and preserve white temperature.
@@ -45,12 +45,17 @@ and long-release events do not execute lighting commands.
 ## Motion priority, manual control and resume
 
 **Button All off takes priority over motion.** Bottom long-press switches off all
-six lamps and sets a persistent, separate hold for each motion zone. Motion edges,
-lux changes, lamp reports, clock boundaries, ambient sampling and HA restarts do
-not clear it. **Top long-press resumes only that remote's group** (1/2: bathroom;
-3/4: living/kitchen). Resume both groups separately, or call
-`script.lighting_resume_automatic` with `room: all`. Manual On, scenes and sliders
-remain usable without clearing the hold. No automations are disabled.
+six lamps and starts a **30-second timer** for each motion zone. Motion edges,
+lux changes, lamp reports, clock boundaries and ambient sampling cannot override
+that pause. Another All off restarts both countdowns. At expiry, motion resumes
+automatically using current occupancy/lux—even without a fresh motion edge.
+Empty or bright rooms are not forced on. A restart restores only the remaining
+time; an already-expired pause cannot become permanent.
+
+**Top long-press resumes only that remote's group early** (1/2: bathroom;
+3/4: living/kitchen). `script.lighting_resume_automatic` with `room: all` resumes
+both early. Manual On, scenes and sliders remain usable without extending the
+pause. No automations are disabled, and no 30-second delay blocks manual commands.
 
 Without an All off hold, **occupied darkness wins immediately**, including while
 occupancy stays on. A scene or room slider cannot hold a motion-controlled area
@@ -81,14 +86,16 @@ including explicit OFF members of a scene. Unaffected rooms, appliance plugs
 and unavailable/unknown sensors cannot acquire automatic priority. The persistent
 helpers `input_boolean.lighting_manual_living_kitchen` and
 `input_boolean.lighting_manual_bathroom` apply only until resumed or dark occupancy
-wins. The separate restored helpers
-`input_boolean.lighting_all_off_hold_living_kitchen` and
-`input_boolean.lighting_all_off_hold_bathroom` instead block motion until explicit
-Resume; unknown/unavailable hold state fails closed. The legacy
-`lighting_manual_override` remains unused for compatibility.
+wins. Restored timers `timer.lighting_all_off_pause_living_kitchen` and
+`timer.lighting_all_off_pause_bathroom` now gate the 30-second pause; unknown or
+unavailable timer state fails closed during startup. Existing
+`input_boolean.lighting_all_off_hold_*` identities are retained only for ownership
+bookkeeping, not as permanent gates. Expiry, startup and automation reload reconcile
+stale holds through the same queue. The legacy `lighting_manual_override` remains
+unused for compatibility.
 
-`script.lighting_resume_automatic` with a room clears just that area's All off hold
-and manual ownership; top long-press resumes only that remote's motion zone; an explicit all-room
+`script.lighting_resume_automatic` with a room cancels just that area's timer and
+clears its All off/manual ownership; top long-press resumes only that remote's motion zone; an explicit all-room
 script invocation resumes both. Resume does not blindly toggle
 all lamps. Native human light calls resolve entity/area/device/label targets
 through the six-lamp allowlist; automatic calls cannot feed back into manual
@@ -174,7 +181,8 @@ candidates performs no command and does not pause motion.
 `direction: previous`. Both directions use the shared queue;
 occupied darkness overrides conflicting scene settings unless an All off hold is
 active. Top long-press clears the hold and manual ownership only for the remote's
-group. Bottom long-press turns all six lamps off and holds both motion zones off.
+group. Bottom long-press turns all six lamps off and pauses both motion zones for
+30 seconds, then automatically resumes them.
 
 Only nonempty scenes containing individual allowlisted lamps qualify. Scenes
 with plugs, other entities, light groups or unavailable scene entities are
@@ -288,8 +296,9 @@ IX_HA_DEPENDENCY_HELPER=~/.local/state/matter-time-sync/configure-energy.py \
 
 The matching HA runtime tests use disposable registries, real HA
 triggers/conditions/scripts and mocked lamp services. All off tests cover
-occupied motion, queued/in-flight commands, every motion entry route, restored or
-unknown hold state, manual On while held, and all four remotes' scoped Resume.
+occupied motion, queued/in-flight commands, every motion entry route, real
+30-second expiry, countdown restart, stale expiry races, restored/expired timers,
+unknown timer state, manual On while paused, and all four remotes' scoped Resume.
 Coverage also includes motion-condition cases and ordinary manual/native Off reversal,
 late device reports, darkness/sensor recovery without new motion, in-flight
 sensor changes, scene/brightness precedence,

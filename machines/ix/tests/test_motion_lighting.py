@@ -18,10 +18,10 @@ class MotionPolicyTests(unittest.TestCase):
     def test_module_imports_and_restored_helpers(self):
         self.assertIn('./motion-lighting.nix',(ROOT/'services.nix').read_text())
         for helper in CONFIG['input_boolean'].values():self.assertNotIn('initial',helper)
-    def test_all_off_hold_is_checked_before_sampling_or_motion_commands(self):
+    def test_bounded_all_off_timer_is_checked_before_sampling_or_motion_commands(self):
         for key,z in ZONES.items():
             branch=next(c for c in WORKER[1]['choose'] if c['conditions']=="{{ room == '"+key+"' }}")
-            self.assertEqual(branch['sequence'][0],{'condition':'state','entity_id':z['offHold'],'state':'off'})
+            self.assertEqual(branch['sequence'][0],{'condition':'state','entity_id':z['offTimer'],'state':'idle'})
     def test_all_motion_uses_the_shared_queue(self):
         for auto,key in zip(AUTOS,['living_kitchen','bathroom']):
             self.assertTrue(auto['initial_state']);self.assertEqual(auto['mode'],'queued')
