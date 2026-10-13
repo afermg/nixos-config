@@ -15,12 +15,15 @@ re-pair devices when rebuilding.
 - **Matter/Thread:** one ZBT-2 radio, native OTBR and Matter Server, with private
   runtime state and loopback management APIs. [`thread.nix`](../machines/ix/thread.nix)
   also provides the matching Matter OTA helper and Ethernet-scoped mDNS.
-- **Lighting:** six white-spectrum bulbs. BILRESA **1/2 control bedroom+bathroom**;
-  **3/4 control living+kitchen**, with equal brightness for lit lamps. Scenes and
-  resume are group-scoped. Bottom long-press turns all lamps off and **pauses
-  motion for 30 seconds**, then automatically resumes it. Another All off restarts
-  the countdown; top long-press resumes its group early. White-only controls replace the redundant Rooms
-  dashboard. Favourite Kelvin presets are saved in HA's entity settings.
+- **Lighting:** six white-spectrum bulbs. BILRESA **1/2 control bedroom only**;
+  **3/4 control living+kitchen**, with equal brightness for lit lamps. Bathroom is
+  independent. Double-click cycles **Off / Medium / Full** within the group;
+  the cross-group legacy scene is retired and living/kitchen has a100% Full scene.
+  Manual adjustments automatically latch persistent **Manual** mode. Motion and
+  clock changes cannot override it; top-long toggles living/kitchen's mode
+  (bedroom has no motion mode). Global All off pauses motion for **30 seconds**,
+  restarting on another press, but never clears Manual mode. White controls and
+  Kelvin favourites remain; the redundant Rooms dashboard stays removed.
 - **Motion:** living/kitchen turns on below **40 lux**, then off after **10 clear
   minutes**. Bathroom uses **20% midnight–07:00 / 80% otherwise**, at 2700 K in
   `America/New_York`, with a **five-minute** vacancy timer. Last-reported low lux
@@ -40,9 +43,8 @@ Details: [lighting](../machines/ix/LIGHTING.md),
 [Roborock](../machines/ix/ROBOROCK.md), [ix access](../machines/ix/README.md).
 The [backup proposal](../machines/ix/HOME_ASSISTANT_BACKUP.md) is **not a verified
 consistent, off-device backup**. Protect HA, Matter and Thread state together;
-Git alone is insufficient. The requested **Off → Medium → High** button cycle is
-still pending: current double-clicks cycle eligible saved scenes in entity-ID order.
-A physical owned vacuum-then-mop run has not been validated.
+Git alone is insufficient. Mocked lighting tests are not physical button
+validation. A physical owned vacuum-then-mop run has not been validated.
 
 ## Moby retirement
 

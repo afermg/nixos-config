@@ -72,7 +72,7 @@ in {
       };
       room_lights_proportional = {
         alias = "Room lights - Proportional brightness";
-        description = "Adjust lit lamps only; living/kitchen share an equal level, other rooms preserve balance. Keep white temperature, exclude plugs, and retain motion priority.";
+        description = "Adjust lit lamps only; living/kitchen share an equal level, other rooms preserve balance. Keep white temperature, exclude plugs, and enter persistent Manual mode in affected motion zones.";
         icon = "mdi:brightness-percent";
         mode = "queued";
         max = 10;

@@ -245,17 +245,20 @@ no history from before recording was enabled can be recovered.
 ### Lighting and cleaning
 
 [LIGHTING.md](LIGHTING.md) documents six white-spectrum lamps and four BILRESA
-remotes:1/2 control bedroom+bathroom;3/4 control living+kitchen at equal brightness
-for lit lamps. Only the dedicated all-off command crosses groups: it turns all
-lamps off and pauses motion for **30 seconds**, restarting the countdown on another
-All off. Motion then resumes automatically; top long-press resumes its group early.
-Restarts preserve only the remaining pause; manual On/scene/slider controls still work.
+remotes:1/2 control bedroom only;3/4 control living+kitchen at equal brightness
+for lit lamps. Bathroom is independent. Manual adjustments select persistent
+Manual mode, which motion, vacancy timers and clock changes cannot override.
+Top-long toggles living/kitchen's mode; bedroom has no motion mode. Only the
+all-off command crosses groups (including bathroom): it pauses motion for
+**30 seconds**, restarting on another press, and never clears Manual mode.
+Restarts preserve the selected mode and remaining pause.
 Living/kitchen
 motion uses a40lux cutoff and10-minute vacancy timer. Bathroom brightness is20%
 midnight–07:00 and80% otherwise (local time), with a five-minute vacancy timer.
 Low unchanged lux does not expire out of eligibility. Shared white controls and
 zero-capable brightness sliders remain; the redundant Rooms dashboard is removed.
-Saved scenes remain editable. The requested Off→Medium→High cycle is still pending.
+Saved presets remain editable. Double-clicks cycle scoped Off→Medium→Full→Off;
+living/kitchen Full is100%, and the cross-group legacy scene is retired.
 
 [ROBOROCK.md](ROBOROCK.md) describes the user-started whole-home vacuum-then-mop
 sequence and its completion checks. See [HOME_ASSISTANT_BACKUP.md](HOME_ASSISTANT_BACKUP.md)

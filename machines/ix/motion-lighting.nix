@@ -17,9 +17,12 @@ let
   priorityChoice = key:
     let zone = zones.${key}; in {
       conditions = "{{ room == '${key}' }}";
-      # Only the bounded timer gates motion, never the legacy restored boolean.
-      # Unknown/unavailable timer state fails closed during helper startup.
-      sequence = [{ condition = "state"; entity_id = zone.offTimer; state = "idle"; }]
+      # Manual mode blocks on, off and profile changes; All off is independent.
+      # Unknown helpers fail closed while restoring state at startup.
+      sequence = [
+        { condition = "state"; entity_id = zone.offTimer; state = "idle"; }
+        { condition = "state"; entity_id = zone.mode; state = "Automatic"; }
+      ]
         ++ (if zone ? ambient then [{ action = "script.lighting_bathroom_sample_ambient"; }] else []) ++ [{ choose = [
         {
           conditions = [
@@ -73,7 +76,7 @@ let
     let zone = zones.${key}; in {
       inherit id;
       alias = name;
-      description = "All off pauses motion for 30 seconds; scoped Resume can end the pause early. Otherwise low-light occupancy overrides manual/scenes; bathroom brightness is 20% midnight-07:00, otherwise 80% (local time). Lamp-off lux only gates activation. Clear for ${toString zone.idleMinutes} minutes before automatic off. Managed in Nix.";
+      description = "All off pauses motion for 30 seconds; scoped Resume can end the pause early. Manual mode preserves user settings until explicitly resumed; in Automatic mode, bathroom brightness is 20% midnight-07:00, otherwise 80% (local time). Lamp-off lux only gates activation. Clear for ${toString zone.idleMinutes} minutes before automatic off. Managed in Nix.";
       mode = "queued"; max = 5; initial_state = true;
       conditions = [
         { condition = "template"; value_template = "{{ trigger.id != 'resume' or trigger.event.data.get('room', 'all') in ['all', '${key}'] }}"; }
@@ -146,7 +149,7 @@ in
     }];
     script.lighting_motion_priority = {
       alias = "Lighting - Reconcile motion priority";
-      description = "Internal queue worker: the 30-second All off timer wins; otherwise current dark occupancy wins. Vacancy timers remain unchanged.";
+      description = "Internal queue worker: require Automatic mode and an idle All off timer before changing any lamp. Vacancy timers remain unchanged.";
       mode = "queued"; max = 20;
       sequence = [
         { condition = "template"; value_template = "{{ room | default('') in ${builtins.toJSON (builtins.attrNames zones)} }}"; }

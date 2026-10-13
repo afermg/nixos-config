@@ -12,6 +12,7 @@
   motionZones = {
     living_kitchen = {
       name = "Living room + kitchen";
+      mode = "input_select.lighting_mode_living_kitchen";
       manual = "input_boolean.lighting_manual_living_kitchen";
       offHold = "input_boolean.lighting_all_off_hold_living_kitchen";
       offTimer = "timer.lighting_all_off_pause_living_kitchen";
@@ -32,6 +33,7 @@
     };
     bathroom = {
       name = "Bathroom";
+      mode = "input_select.lighting_mode_bathroom";
       manual = "input_boolean.lighting_manual_bathroom";
       offHold = "input_boolean.lighting_all_off_hold_bathroom";
       offTimer = "timer.lighting_all_off_pause_bathroom";
@@ -57,10 +59,15 @@
     };
   };
   rooms = [ "bedroom" "living_kitchen" "bathroom" ];
-  # Exact registered remotes: 1/2 share bedroom+bathroom, 3/4 living+kitchen.
+  # Ordered, editable presets. The Off stage is a scoped command, not a scene.
+  sceneCycles = {
+    bedroom = [ "scene.bedroom_medium_illumination" "scene.bedroom_full_illumination" ];
+    living_kitchen = [ "scene.living_kitchen_medium_illumination" "scene.living_kitchen_full_illumination" ];
+  };
+  # Exact registered remotes: 1/2 bedroom only, 3/4 living+kitchen.
   # No area-name/device discovery can accidentally bind another remote.
   bilresa = {
-    bedroom_bathroom = {
+    bedroom = {
       top = [ "event.bedroom_bilresa_dual_button_1_button_1" "event.bilresa_dual_button_button_1" ];
       bottom = [ "event.bedroom_bilresa_dual_button_1_button_2" "event.bilresa_dual_button_button_2" ];
     };
@@ -73,7 +80,6 @@
   # individual-room arguments for existing callers, but don't show extra cards.
   roomAreas = {
     bedroom = [ "bedroom" ];
-    bedroom_bathroom = [ "bedroom" "bathroom" ];
     living_kitchen = [ "living_room" "kitchen" ];
     bathroom = [ "bathroom" ];
     living_room = [ "living_room" ];

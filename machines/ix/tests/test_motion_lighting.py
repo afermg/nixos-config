@@ -22,6 +22,7 @@ class MotionPolicyTests(unittest.TestCase):
         for key,z in ZONES.items():
             branch=next(c for c in WORKER[1]['choose'] if c['conditions']=="{{ room == '"+key+"' }}")
             self.assertEqual(branch['sequence'][0],{'condition':'state','entity_id':z['offTimer'],'state':'idle'})
+            self.assertEqual(branch['sequence'][1],{'condition':'state','entity_id':z['mode'],'state':'Automatic'})
     def test_all_motion_uses_the_shared_queue(self):
         for auto,key in zip(AUTOS,['living_kitchen','bathroom']):
             self.assertTrue(auto['initial_state']);self.assertEqual(auto['mode'],'queued')

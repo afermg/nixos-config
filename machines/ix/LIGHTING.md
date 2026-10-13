@@ -10,28 +10,27 @@ Other user dashboards are preserved.
 
 Four registered BILRESA remotes have independent control groups:
 
-- **1 and2:** bedroom + bathroom.
+- **1 and2:** bedroom only; bathroom is independent.
 - **3 and4:** living room + kitchen; brightness commands give all lit lamps in
   this group the **same level**, rather than preserving unequal percentages.
-- Only **bottom long-press (all-off)** crosses groups. Top long-press resumes
-  only the group's motion zone. Double-clicks select only scenes whose entire
-  membership is inside the group; unrelated explicit OFF members also exclude a
-  scene. **All off pauses motion in both groups for 30 seconds.**
+- Only **bottom long-press (all-off)** crosses groups, including the bathroom.
+  Top long-press toggles the group's Automatic/Manual mode; bedroom has no motion
+  automation, so its top-long action does nothing. Double-clicks cycle scoped
+  **Off → Medium → Full → Off**; unrelated explicit OFF scene members are rejected.
 
 Each remote uses this mapping:
 
 | Button | Short press | Double-click | Long press |
 | --- | --- | --- | --- |
-| Top | Group brighter (×1.25) | Next group-only Button scene | Resume group's automatic lighting |
-| Bottom | Group dimmer (×0.8) | Previous group-only Button scene | All six lamps off; pause motion for 30 seconds |
+| Top | Group brighter (×1.25), enter Manual | Next: Off / Medium / Full | Toggle group's Automatic/Manual mode |
+| Bottom | Group dimmer (×0.8), enter Manual | Previous: reverse cycle | All six lamps off; pause motion for 30 seconds |
 
 Commands never include smart-plug outlets, appliances or ix. Brightness changes
 only currently lit, available, dimmable bulbs and preserve white temperature.
 Living/kitchen uses one level derived from its brightest lit lamp, capped at255;
-this corrects unequal levels even at the maximum. Bedroom/bathroom retain their
-relative brightness, except bathroom automatic priority. Off bulbs stay off
-unless occupied darkness requires automatic lighting in that area and no All off
-hold is active.
+this corrects unequal levels even at the maximum. Bedroom lamps retain their
+relative brightness. Off bulbs stay off during relative dimming. An explicit
+manual adjustment latches Manual mode, preventing motion from undoing it.
 
 Device names and all eight event IDs were verified against HA's registry.
 Exact bindings live in `lighting-policy.nix` under `bilresa`; no name/area wildcard
@@ -42,64 +41,43 @@ Only fresh `multi_press_1`, `multi_press_2` and `long_press` state events are
 accepted. Initial, restored, stale, repeated-timestamp, unsupported multi-press
 and long-release events do not execute lighting commands.
 
-## Motion priority, manual control and resume
+## Automatic / Manual mode and the separate All off pause
 
-**Button All off takes priority over motion.** Bottom long-press switches off all
-six lamps and starts a **30-second timer** for each motion zone. Motion edges,
-lux changes, lamp reports, clock boundaries and ambient sampling cannot override
-that pause. Another All off restarts both countdowns. At expiry, motion resumes
-automatically using current occupancy/lux—even without a fresh motion edge.
-Empty or bright rooms are not forced on. A restart restores only the remaining
-time; an already-expired pause cannot become permanent.
+The independent settings are `input_select.lighting_mode_living_kitchen` and
+`input_select.lighting_mode_bathroom`, with **Automatic** and **Manual** options.
+New helpers default Automatic; existing selections restore across restarts.
+Bedroom has no motion automation and cannot change the bathroom's mode.
 
-**Top long-press resumes only that remote's group early** (1/2: bathroom;
-3/4: living/kitchen). `script.lighting_resume_automatic` with `room: all` resumes
-both early. Manual On, scenes and sliders remain usable without extending the
-pause. No automations are disabled, and no 30-second delay blocks manual commands.
+A deliberate manual brightness adjustment (number slider, white-control level,
+native HA light control or BILRESA dimming) **automatically enters Manual** in
+only the affected motion zone. Manual power, white-temperature and scene commands
+also take manual ownership. Motion, vacancy recovery and midnight/07:00 profile
+changes cannot change lamps in Manual. Selecting Manual itself leaves lamps alone.
+Return explicitly to Automatic using the mode setting or top-long on remote3/4;
+current occupancy/lux is then reevaluated without requiring a new motion edge.
+Bathroom's mode is separate, available in HA's helper settings.
 
-Without an All off hold, **occupied darkness wins immediately**, including while
-occupancy stays on. A scene or room slider cannot hold a motion-controlled area
-off when occupied and the applicable ambient reading is below the zone's cutoff:
-**40 lux for living/kitchen**, **50 lux for bathroom**. Living/kitchen uses current
-lux; bathroom accepts a last-reported low reading and latches an owned dark cycle
-while ON (see below). Missing or stale baseline metadata no longer blocks known
-darkness, including takeover of a manually lit lamp. No new motion transition or explicit Resume is needed to reconcile an
-already owned, occupied cycle. Bedroom has no motion rule;
-bedroom-only commands do not change living/kitchen or bathroom ownership.
+**All off is not a mode change.** It switches all six lamps off and starts/restarts
+both native **30-second timers**. Expiry reevaluates only Automatic zones; Manual
+zones remain Manual and off. New manual commands still work during the countdown
+without extending it. Timers restore remaining time, including offline expiry.
+No automations are disabled and no blocking 30-second script delay is used.
+Changing mode does not cancel the timer; the compatibility service
+`script.lighting_resume_automatic` explicitly returns selected zones to Automatic
+and cancels their timers early (`room: all` is an explicit global resume).
 
-One shared queue serializes motion and wrapped manual operations. After every
-manual command it reevaluates only the affected motion areas using current
-sensor values. Eligible motion clears that area's manual flag, claims automatic
-ownership and restores lighting. Neither motion automation nor BILRESA is ever
-disabled by manual control. Scenes retain their editable definitions; priority
-changes the resulting lamp state, not the saved scene.
+All mode, cycle, manual and automatic decisions use one queue. Native human
+service calls are distinguished from automated/child-context feedback. Absolute
+native brightness requests and native scene requests are reapplied inside that
+queue after selecting Manual, so an already in-flight automatic write cannot
+win. Automatic reports never select Manual. No sensor timestamps are fabricated.
 
-Native scene/light requests can complete after their service-event listener.
-Targeted lamp-state/attribute triggers close that race, including direct device
-reports. Already-correct reports are ignored; bathroom brightness/temperature
-checks tolerate Matter rounding to avoid feedback. No broad sensor-state
-listener or unconditional polling-based activation is used. Bathroom sampling
-waits for an actual OFF-era report, not a guessed mode or the lamp's own light.
-
-Outside occupied darkness, manual ownership remains scoped to affected lamps,
-including explicit OFF members of a scene. Unaffected rooms, appliance plugs
-and unavailable/unknown sensors cannot acquire automatic priority. The persistent
-helpers `input_boolean.lighting_manual_living_kitchen` and
-`input_boolean.lighting_manual_bathroom` apply only until resumed or dark occupancy
-wins. Restored timers `timer.lighting_all_off_pause_living_kitchen` and
-`timer.lighting_all_off_pause_bathroom` now gate the 30-second pause; unknown or
-unavailable timer state fails closed during startup. Existing
-`input_boolean.lighting_all_off_hold_*` identities are retained only for ownership
-bookkeeping, not as permanent gates. Expiry, startup and automation reload reconcile
-stale holds through the same queue. The legacy `lighting_manual_override` remains
-unused for compatibility.
-
-`script.lighting_resume_automatic` with a room cancels just that area's timer and
-clears its All off/manual ownership; top long-press resumes only that remote's motion zone; an explicit all-room
-script invocation resumes both. Resume does not blindly toggle
-all lamps. Native human light calls resolve entity/area/device/label targets
-through the six-lamp allowlist; automatic calls cannot feed back into manual
-ownership. Invalid/empty commands do nothing.
+In Automatic, the existing strict40lux living/kitchen and50lux bathroom rules,
+ambient validation, Matter rounding tolerance and owned vacancy shutoff remain.
+Unknown/unavailable mode or timer helpers fail closed. Existing manual/All-off
+booleans retain their identities as ownership bookkeeping; the mode selector is
+the persistent authority. Timer expiry never clears it. The legacy global
+`lighting_manual_override` remains unused. Invalid/empty commands do nothing.
 
 All shared-control/button manual operations use a serialized queue. Controls
 cover **Bedroom**, **Living room + kitchen**, and **Bathroom**. Living room
@@ -134,16 +112,14 @@ not deleted. The number and white-control entities are not physical devices or
 allowlist members. There is no state-sync
 write loop; scenes, buttons and motion are reflected from actual lamp state.
 
-Unless held by All off, motion priority can immediately move the slider back: living/kitchen must be
-on when dark and occupied; bathroom must use its clock-selected **20% night / 80% day**
-setting, both at 2700K.
-Off, unavailable and unlisted lamps are not included in proportional adjustments
-except when the separate, higher-priority motion rule requires the area on.
+Moving a slider selects Manual, so automatic lighting cannot move it back.
+Bathroom's **20% night / 80% day**,2700K profile applies only in Automatic mode.
+Off, unavailable and unlisted lamps are not included in proportional adjustments.
 
 ## Editable scenes
 
-**Pending:** the requested **Off → Medium → High** cycle has not yet replaced
-entity-ID-ordered scene cycling. Do not interpret the current cycle as that order.
+The fixed group cycle is **Off → Medium (~50%) → Full (100%) → Off**;
+bottom double-click reverses it. Selection and dispatch are serialized together.
 
 Scenes are editable under **Settings → Automations & scenes → Scenes**.
 `lighting-scenes.nix` includes `/var/lib/hass/scenes.yaml` and seeds it only when
@@ -157,32 +133,30 @@ The four supplied scenes are:
 
 - **Bedroom - Medium illumination**: both bedroom lamps at 128/255 (~50%);
   other rooms unchanged. No color/temperature changes are requested.
-- **Living kitchen only**: living-room lamps at 204/255 (~80%), kitchen at
-  128/255 (~50%); bedroom and bathroom lamps off. No color changes are requested.
-
 - **Bedroom - Full illumination**: both bedroom lamps at **255/255 (100%)**;
   other rooms unchanged. No color/temperature change.
 - **Living kitchen - Medium illumination**: all three living-room/kitchen lamps
   at **128/255 (~50%)**; bedroom and bathroom unchanged. No color change.
 
-The two added scenes are installed using HA's scene-editor API without replacing
-existing scene definitions. All four are labeled **Button scenes**. Add that
-label to another editable scene to
-include it in the double-click cycle. Candidates are sorted by entity ID; next
-and previous move relative to the most recently activated candidate, wrapping
-at either end. Physical remotes additionally require all scene members to be in
-their own group. Thus **Living kitchen only**, which explicitly switches bedroom
-and bathroom off, is not a group-safe remote scene; its original definition remains
-available in the scene editor/UI. With no previous activation, next selects the first candidate
-and previous selects the last. A single candidate selects itself; zero eligible
-candidates performs no command and does not pause motion.
+- **Living kitchen - Full illumination**: all three lamps at **255/255 (100%)**;
+  bedroom and bathroom unchanged. No color change.
 
-`script.bilresa_cycle_scenes` accepts `direction: next` (the default) or
-`direction: previous`. Both directions use the shared queue;
-occupied darkness overrides conflicting scene settings unless an All off hold is
-active. Top long-press clears the hold and manual ownership only for the remote's
-group. Bottom long-press turns all six lamps off and pauses both motion zones for
-30 seconds, then automatically resumes them.
+The legacy **Living kitchen only** scene is retired. Existing installations need
+the explicit scene-editor API migration: delete that scene, create the new Full
+scene, and preserve the other three definitions. Changing seeds alone does not
+modify an existing `scenes.yaml`. The bathroom has no group scene.
+
+`sceneCycles` in `lighting-policy.nix` fixes the two preset IDs and their order;
+labels no longer control membership. Both presets must be available and wholly
+inside the selected group (including OFF members), otherwise cycling does nothing.
+All lamps off means the Off stage, even if a scene was previously activated.
+Otherwise the most recently activated preset determines the stage; without one,
+next starts at Medium and previous at Full. Off is a scoped manual command and
+cannot immediately be undone by motion. Scene settings remain editable.
+
+`script.bilresa_cycle_scenes` requires `room: bedroom` or `living_kitchen` and
+accepts `direction: next` (default) or `previous`. It never controls bathroom.
+Bottom long-press remains global All off, preserving each zone's mode.
 
 Only nonempty scenes containing individual allowlisted lamps qualify. Scenes
 with plugs, other entities, light groups or unavailable scene entities are
@@ -209,15 +183,15 @@ The native temperature slider may require turning on the room via brightness
 first. Bedroom controls never change living/kitchen or bathroom lamps.
 Unknown/group/appliance targets remain excluded.
 
-Without an All off hold, occupied dark bathroom lighting can immediately restore
-its automatic20%/80%,2700K profile. White controls neither clear an existing hold
-nor create one, and do not enable Party mode. A multicolour Party mode is not supported by
+Manual white adjustments select Manual and are not overwritten by bathroom's
+scheduled profile. White controls do not cancel or extend an All off countdown
+and do not enable Party mode. A multicolour Party mode is not supported by
 these bulbs. No lamp commands are sent during installation.
 
 ## Automatic motion lighting
 
-When no All off hold is active, `motion-lighting.nix` gives occupied darkness
-priority over manual/scene settings:
+Only in Automatic mode, with an idle All off timer, `motion-lighting.nix`
+uses the following rules:
 
 - Living/kitchen MYGGSPRAY: occupancy
   `binary_sensor.myggspray_wrlss_mtn_sensor_occupancy`, illuminance
@@ -239,7 +213,7 @@ priority over manual/scene settings:
 
   Midnight and07:00 triggers update an occupied automatic cycle without needing
   another motion edge. They do not turn on an empty bathroom. The target still
-  wins over manual commands/scenes during qualifying occupancy.
+  applies during qualifying Automatic occupancy, never over Manual mode.
   The existing **lamp-off ambient below50lux** rule gates automatic activation
   only; it does NOT choose low/high brightness. Turn off after **5 uninterrupted
   clear minutes**, only if automatically claimed.
