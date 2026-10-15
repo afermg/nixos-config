@@ -76,17 +76,21 @@ let
     let zone = zones.${key}; in {
       inherit id;
       alias = name;
-      description = "All off pauses motion for 30 seconds; scoped Resume can end the pause early. Manual mode preserves user settings until explicitly resumed; in Automatic mode, bathroom brightness is 20% midnight-07:00, otherwise 80% (local time). Lamp-off lux only gates activation. Clear for ${toString zone.idleMinutes} minutes before automatic off. Managed in Nix.";
+      description = "All off pauses this zone for ${toString zone.offPauseSeconds} seconds and rearms bathroom Automatic mode; scoped Resume can end the pause early. Later manual input preserves user settings until explicitly resumed; in Automatic mode, bathroom brightness is 20% midnight-07:00, otherwise 80% (local time). Lamp-off lux only gates activation. Clear for ${toString zone.idleMinutes} minutes before automatic off. Managed in Nix.";
       mode = "queued"; max = 5; initial_state = true;
       conditions = [
         { condition = "template"; value_template = "{{ trigger.id != 'resume' or trigger.event.data.get('room', 'all') in ['all', '${key}'] }}"; }
         # Only conflicting lamp reports need arbitration. Do not react to our
         # own already-correct reports, unrelated attributes, or unavailable lamps.
+        # Direct human reports belong to the native-control handler, not motion:
+        # don't race its queued ownership/all-off decision with automatic writes.
         { condition = "template"; value_template = ''
             ${if zone ? ambient then ambient.prelude else ""}
             {{ trigger.id != 'lamp' or
                (trigger.to_state is not none and trigger.from_state is not none
                 and trigger.to_state.state in ['on', 'off']
+                and (trigger.to_state.context.user_id is none
+                     or trigger.to_state.context.parent_id is not none)
                 and (${needsOn zone "trigger.to_state"})) }}
           ''; }
       ];

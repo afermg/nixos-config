@@ -21,8 +21,11 @@ re-pair devices when rebuilding.
   the cross-group legacy scene is retired and living/kitchen has a100% Full scene.
   Manual adjustments automatically latch persistent **Manual** mode. Motion and
   clock changes cannot override it; top-long toggles living/kitchen's mode
-  (bedroom has no motion mode). Global All off pauses motion for **30 seconds**,
-  restarting on another press, but never clears Manual mode. White controls and
+  (bedroom has no motion mode). Global All off rearms bathroom Automatic after
+  **5 seconds**; living/kitchen pauses **30 seconds** without changing its mode.
+  Repeated presses restart both; later manual input still wins. Living/kitchen
+  presets cycle all Mid → all High → living-only Mid → living-only High → Off,
+  with kitchen off in the living-only scenes. White controls and
   Kelvin favourites remain; the redundant Rooms dashboard stays removed.
 - **Motion:** living/kitchen turns on below **40 lux**, then off after **10 clear
   minutes**. Bathroom uses **20% midnight–07:00 / 80% otherwise**, at 2700 K in

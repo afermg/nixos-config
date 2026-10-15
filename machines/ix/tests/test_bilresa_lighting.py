@@ -56,7 +56,7 @@ class ButtonPolicyTests(unittest.TestCase):
         self.assertTrue(AUTOMATION['initial_state'])
         for z in ZONES.values():
             timer=CONFIG['timer'][z['offTimer'].split('.')[1]]
-            self.assertEqual(timer['duration'],'00:00:30');self.assertTrue(timer['restore'])
+            self.assertEqual(timer['duration'],{'seconds':z['offPauseSeconds']});self.assertTrue(timer['restore'])
         self.assertNotIn('"delay"',json.dumps(SCRIPTS))
     def test_editable_scene_cycle_is_restricted(self):
         text=SCRIPTS['lighting_cycle_group']['sequence'][1]['variables']['scene_ids']
@@ -247,23 +247,29 @@ class ButtonRuntimeTests(unittest.IsolatedAsyncioTestCase):
     async def test_cycle_off_medium_full_forward_reverse_and_invalid_inputs(self):
         await self.setup_priority_runtime()
         for room,members in [('bedroom',LIGHTS[:2]),('living_kitchen',LIGHTS[2:5])]:
-            for entity,level in zip(POLICY['sceneCycles'][room],[128,255]):
-                self.fake_scene_definitions[entity]={e:{'state':'on','brightness':level} for e in members}
+            seeds={s['id']:s['entities'] for s in json.loads((ROOT/'lighting-scenes-defaults.json').read_text())}
+            for entity in POLICY['sceneCycles'][room]:
+                self.fake_scene_definitions[entity]=copy.deepcopy(seeds[entity.removeprefix('scene.')])
                 self.hass.states.async_set(entity,'unknown',{'entity_id':members})
-            for direction,levels in [('next',[128,255,0,128,255,0]),('previous',[255,128,0,255,128,0])]:
-                for expected in levels:
+            levels=([{'brightness':128,'kitchen':True},{'brightness':255,'kitchen':True}]
+                    + ([{'brightness':128,'kitchen':False},{'brightness':255,'kitchen':False}] if room=='living_kitchen' else []))
+            for direction,steps in [('next',(levels+[None])*2),('previous',(list(reversed(levels))+[None])*2)]:
+                for step in steps:
                     self.calls.clear()
                     await self.run_script('bilresa_cycle_scenes',{'room':room,'direction':direction})
                     await self.hass.async_block_till_done()
                     for e in members:
+                        expected=step['brightness'] if step and (e!=LIGHTS[4] or step['kitchen']) else 0
                         self.assertEqual(self.hass.states.get(e).state,'on' if expected else 'off')
                         if expected:self.assertEqual(self.hass.states.get(e).attributes['brightness'],expected)
                     self.assertTrue(all(set([c[2]['entity_id']] if isinstance(c[2]['entity_id'],str) else c[2]['entity_id'])<=set(members) for c in self.calls if c[0]=='light'))
                     self.assertEqual(self.hass.states.get(LIGHTS[5]).state,'off')
             for bad in [{'room':room,'direction':'bad'},{'room':'bathroom'},{'room':'all'},{'room':'bedroom_bathroom'},{}]:
                 self.calls.clear();await self.run_script('bilresa_cycle_scenes',bad);self.assertEqual(self.calls,[])
-            self.hass.states.async_remove(POLICY['sceneCycles'][room][1]);self.calls.clear()
-            await self.run_script('bilresa_cycle_scenes',{'room':room});self.assertEqual(self.calls,[])
+            for entity in POLICY['sceneCycles'][room]:
+                self.hass.states.async_remove(entity);self.calls.clear()
+                await self.run_script('bilresa_cycle_scenes',{'room':room});self.assertEqual(self.calls,[])
+                self.hass.states.async_set(entity,'unknown',{'entity_id':members})
     async def test_event_filter_and_all_six_mappings(self):
         from homeassistant.components.automation.config import PLATFORM_SCHEMA
         from homeassistant.core import State
@@ -610,7 +616,7 @@ class ButtonRuntimeTests(unittest.IsolatedAsyncioTestCase):
         for entity in LIGHTS:self.assertEqual(self.hass.states.get(entity).state,'off')
         for z in ZONES.values():
             self.assertEqual(self.hass.states.get(z['offHold']).state,'on')
-            self.assertEqual(self.hass.states.get(z['manual']).state,'on')
+            self.assertEqual(self.hass.states.get(z['manual']).state,'off' if z==ZONES['bathroom'] else 'on')
             self.assertEqual(self.hass.states.get(z['active']).state,'off')
             self.assertEqual(self.hass.states.get(z['automation']).state,'on')
         self.assertEqual(self.hass.states.get('switch.appliance').state,'on')
@@ -713,7 +719,7 @@ class ButtonRuntimeTests(unittest.IsolatedAsyncioTestCase):
                 await self.run_script('bilresa_all_lights_off');await self.hass.async_block_till_done()
             for z in ZONES.values():
                 end=dt.parse_datetime(self.hass.states.get(z['offTimer']).attributes['finishes_at'])
-                self.assertEqual(end,now+timedelta(seconds=offset+30))
+                self.assertEqual(end,now+timedelta(seconds=offset+z['offPauseSeconds']))
         for k,z in ZONES.items():
             await self.run_script('lighting_manual_action',{'operation':'expire_all_off','room':k})
             self.assertTrue(self.hass.states.is_state(z['offHold'],'on'))
@@ -1031,8 +1037,9 @@ class ButtonRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.fake_scene_definitions['scene.cross']={e:{'state':'on' if e in LIGHTS[2:5] else 'off'} for e in LIGHTS}
         self.hass.states.async_set('scene.cross','unknown',{'entity_id':LIGHTS})
         for room,members in [('bedroom',LIGHTS[:2]),('living_kitchen',LIGHTS[2:5])]:
-            for entity,level in zip(POLICY['sceneCycles'][room],[128,255]):
-                self.fake_scene_definitions[entity]={e:{'state':'on','brightness':level} for e in members}
+            seeds={s['id']:s['entities'] for s in json.loads((ROOT/'lighting-scenes-defaults.json').read_text())}
+            for entity in POLICY['sceneCycles'][room]:
+                self.fake_scene_definitions[entity]=copy.deepcopy(seeds[entity.removeprefix('scene.')])
                 self.hass.states.async_set(entity,'unknown',{'entity_id':members})
             self.calls.clear();await self.run_script('bilresa_cycle_scenes',{'room':room})
             await self.hass.async_block_till_done()

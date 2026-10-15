@@ -249,15 +249,18 @@ remotes:1/2 control bedroom only;3/4 control living+kitchen at equal brightness
 for lit lamps. Bathroom is independent. Manual adjustments select persistent
 Manual mode, which motion, vacancy timers and clock changes cannot override.
 Top-long toggles living/kitchen's mode; bedroom has no motion mode. Only the
-all-off command crosses groups (including bathroom): it pauses motion for
-**30 seconds**, restarting on another press, and never clears Manual mode.
-Restarts preserve the selected mode and remaining pause.
+all-off command crosses groups: bathroom rearms Automatic after a **5-second**
+pause; living/kitchen pauses **30 seconds** without changing its mode. Repeated
+All off restarts both timers; newer manual input wins. Restarts preserve modes
+and remaining pauses.
 Living/kitchen
 motion uses a40lux cutoff and10-minute vacancy timer. Bathroom brightness is20%
 midnight–07:00 and80% otherwise (local time), with a five-minute vacancy timer.
 Low unchanged lux does not expire out of eligibility. Shared white controls and
 zero-capable brightness sliders remain; the redundant Rooms dashboard is removed.
-Saved presets remain editable. Double-clicks cycle scoped Off→Medium→Full→Off;
+Saved presets remain editable. Bedroom cycles Off→Medium→Full→Off. Living/kitchen
+cycles Off→all Mid→all High→living-only Mid→living-only High→Off (kitchen off in
+the two living-only presets);
 living/kitchen Full is100%, and the cross-group legacy scene is retired.
 
 [ROBOROCK.md](ROBOROCK.md) describes the user-started whole-home vacuum-then-mop

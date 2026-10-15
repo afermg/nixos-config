@@ -16,14 +16,14 @@ Four registered BILRESA remotes have independent control groups:
 - Only **bottom long-press (all-off)** crosses groups, including the bathroom.
   Top long-press toggles the group's Automatic/Manual mode; bedroom has no motion
   automation, so its top-long action does nothing. Double-clicks cycle scoped
-  **Off → Medium → Full → Off**; unrelated explicit OFF scene members are rejected.
+  the ordered presets below; unrelated explicit OFF scene members are rejected.
 
 Each remote uses this mapping:
 
 | Button | Short press | Double-click | Long press |
 | --- | --- | --- | --- |
-| Top | Group brighter (×1.25), enter Manual | Next: Off / Medium / Full | Toggle group's Automatic/Manual mode |
-| Bottom | Group dimmer (×0.8), enter Manual | Previous: reverse cycle | All six lamps off; pause motion for 30 seconds |
+| Top | Group brighter (×1.25), enter Manual | Next ordered preset / Off | Toggle group's Automatic/Manual mode |
+| Bottom | Group dimmer (×0.8), enter Manual | Previous: reverse cycle | All six off; bathroom Auto after 5s, living/kitchen pause 30s |
 
 Commands never include smart-plug outlets, appliances or ix. Brightness changes
 only currently lit, available, dimmable bulbs and preserve white temperature.
@@ -57,11 +57,15 @@ Return explicitly to Automatic using the mode setting or top-long on remote3/4;
 current occupancy/lux is then reevaluated without requiring a new motion edge.
 Bathroom's mode is separate, available in HA's helper settings.
 
-**All off is not a mode change.** It switches all six lamps off and starts/restarts
-both native **30-second timers**. Expiry reevaluates only Automatic zones; Manual
-zones remain Manual and off. New manual commands still work during the countdown
-without extending it. Timers restore remaining time, including offline expiry.
-No automations are disabled and no blocking 30-second script delay is used.
+**All off rearms bathroom Automatic mode**, switches all six lamps off, and
+starts/restarts the bathroom's **5-second** pause and living/kitchen's **30-second**
+pause. Living/kitchen's mode is unchanged. The remote bottom-long, app All off
+script and native human `light.turn_off` targeting all six lamps use this same
+path. After five seconds bathroom occupancy/darkness is reevaluated, including
+motion already present; no new motion edge is required. Bright/empty rooms stay
+off. A later explicit manual command still wins and is not erased by expiry.
+Timers restore remaining time, including offline expiry. No automation is
+disabled and no blocking script delay is used.
 Changing mode does not cancel the timer; the compatibility service
 `script.lighting_resume_automatic` explicitly returns selected zones to Automatic
 and cancels their timers early (`room: all` is an explicit global resume).
@@ -118,8 +122,11 @@ Off, unavailable and unlisted lamps are not included in proportional adjustments
 
 ## Editable scenes
 
-The fixed group cycle is **Off → Medium (~50%) → Full (100%) → Off**;
-bottom double-click reverses it. Selection and dispatch are serialized together.
+Bedroom keeps **Off → Medium (~50%) → Full (100%) → Off**.
+Living/kitchen cycles **Off → all three Mid → all three High → living-room-only
+Mid → living-room-only High → Off**. Kitchen is explicitly off in the last two
+presets. Bottom double-click reverses the sequence. Selection and dispatch are
+serialized together.
 
 Scenes are editable under **Settings → Automations & scenes → Scenes**.
 `lighting-scenes.nix` includes `/var/lib/hass/scenes.yaml` and seeds it only when
@@ -129,7 +136,7 @@ native scene-editor saves use0644 (the parent state directory remains private).
 The scoped-lighting rollout narrows Bedroom medium via the supported editor API,
 preserving its bedroom values and the other scene definitions.
 
-The four supplied scenes are:
+The six supplied scenes are:
 
 - **Bedroom - Medium illumination**: both bedroom lamps at 128/255 (~50%);
   other rooms unchanged. No color/temperature changes are requested.
@@ -141,22 +148,28 @@ The four supplied scenes are:
 - **Living kitchen - Full illumination**: all three lamps at **255/255 (100%)**;
   bedroom and bathroom unchanged. No color change.
 
-The legacy **Living kitchen only** scene is retired. Existing installations need
-the explicit scene-editor API migration: delete that scene, create the new Full
-scene, and preserve the other three definitions. Changing seeds alone does not
-modify an existing `scenes.yaml`. The bathroom has no group scene.
+- **Living room only - Mid**: both living-room lamps at **128/255 (~50%)**,
+  kitchen off; bedroom and bathroom unchanged.
+- **Living room only - High**: both living-room lamps at **255/255 (100%)**,
+  kitchen off; bedroom and bathroom unchanged.
 
-`sceneCycles` in `lighting-policy.nix` fixes the two preset IDs and their order;
-labels no longer control membership. Both presets must be available and wholly
+The old cross-group **Living kitchen only** scene remains retired. The two new
+living-only scenes have separate fixed IDs and must be added through the supported
+scene-editor API on existing installations. Preserve all existing editable
+presets; changing seeds alone does not modify `scenes.yaml`. Bathroom has no scene.
+
+`sceneCycles` in `lighting-policy.nix` fixes each group's preset IDs and order;
+labels no longer control membership. Every preset must be available and wholly
 inside the selected group (including OFF members), otherwise cycling does nothing.
 All lamps off means the Off stage, even if a scene was previously activated.
 Otherwise the most recently activated preset determines the stage; without one,
-next starts at Medium and previous at Full. Off is a scoped manual command and
+next starts at the first Mid preset and previous at the last High/Full preset. Off is a scoped manual command and
 cannot immediately be undone by motion. Scene settings remain editable.
 
 `script.bilresa_cycle_scenes` requires `room: bedroom` or `living_kitchen` and
 accepts `direction: next` (default) or `previous`. It never controls bathroom.
-Bottom long-press remains global All off, preserving each zone's mode.
+Bottom long-press remains global All off, rearming bathroom Auto while preserving
+living/kitchen's mode.
 
 Only nonempty scenes containing individual allowlisted lamps qualify. Scenes
 with plugs, other entities, light groups or unavailable scene entities are

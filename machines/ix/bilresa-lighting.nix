@@ -27,7 +27,7 @@ let
            and (not is_state('${zone.mode}', 'Manual') or not is_state('${zone.manual}', 'on') or not is_state('${zone.active}', 'off')) }}
       '';
       # Deliberate manual commands latch the mode; automatic reports never do.
-      # All off has separate temporary bookkeeping and must preserve this mode.
+      # All off handles its own pause and bathroom Automatic selection below.
       sequence = [
         { "if" = "{{ not is_state('${zone.mode}', 'Manual') }}";
           "then" = [{ action = "input_select.select_option";
@@ -119,7 +119,7 @@ in
     timer = builtins.listToAttrs (builtins.map (zone: {
       name = builtins.replaceStrings [ "timer." ] [ "" ] zone.offTimer;
       value = { name = "${zone.name} - All off motion pause";
-        duration = "00:00:30"; restore = true; icon = "mdi:timer-sand"; };
+        duration.seconds = zone.offPauseSeconds; restore = true; icon = "mdi:timer-sand"; };
     }) (builtins.attrValues zones));
     # Idle also covers cancellation and an expiry while HA was stopped. Reload
     # reconciliation prevents a missed event from leaving stale ownership behind.
@@ -232,7 +232,7 @@ in
               sequence = builtins.map (key: let zone = zones.${key}; in {
                 choose = [{
                   # Recheck inside the shared queue: an older expiry must never
-                  # clear a fresh 30-second pause from a subsequent All off.
+                  # clear a fresh pause from a subsequent All off.
                   conditions = "{{ room == '${key}' and is_state('${zone.offTimer}', 'idle') and is_state('${zone.offHold}', 'on') }}";
                   sequence = [
                     { action = "input_boolean.turn_off"; target.entity_id = [ zone.offHold zone.manual ]; }
@@ -329,14 +329,18 @@ in
                     conditions = "{{ operation == 'all_off' }}";
                     # Start/restart a bounded pause before any lamp command.
                     # No blocking delay: manual controls keep using the queue.
-                    sequence = [
-                      { action = "timer.start";
-                        target.entity_id = builtins.map (zone: zone.offTimer) (builtins.attrValues zones);
-                        data.duration = "00:00:30"; }
+                    sequence = (builtins.map (zone: {
+                      action = "timer.start"; target.entity_id = zone.offTimer;
+                      data.duration = zone.offPauseSeconds;
+                    }) (builtins.attrValues zones)) ++ [
                       { action = "input_boolean.turn_on";
                         target.entity_id = builtins.concatMap (zone: [ zone.offHold zone.manual ]) (builtins.attrValues zones); }
                       { action = "input_boolean.turn_off";
                         target.entity_id = builtins.map (zone: zone.active) (builtins.attrValues zones); }
+                      # All off explicitly rearms bathroom auto-light, but only
+                      # after its timer is active. Later manual input still wins.
+                      { action = "input_select.select_option";
+                        target.entity_id = zones.bathroom.mode; data.option = "Automatic"; }
                       { action = "light.turn_off"; target.entity_id = lights; }
                     ];
                   }
@@ -409,13 +413,13 @@ in
       };
       bilresa_cycle_scenes = {
         alias = "BILRESA - Cycle button scenes";
-        description = "Serialized Off / Medium / Full cycle, strictly inside the selected group.";
+        description = "Serialized scoped cycle: bedroom Off / Medium / Full; living+kitchen Off / All mid / All high / Living only mid / Living only high.";
         mode = "queued";
         sequence = [ (dispatch "cycle" { room = "{{ room | default('') }}"; direction = "{{ direction | default('next') }}"; }) ];
       };
       lighting_cycle_group = {
         alias = "Lighting - Internal group scene cycle";
-        description = "Queue worker: validate both editable presets before any command; Off is scoped and enters Manual.";
+        description = "Queue worker: validate every ordered preset, including OFF members, before any command; Off is scoped and enters Manual.";
         mode = "queued";
         fields.direction = {
           name = "Direction"; default = "next";
@@ -424,7 +428,7 @@ in
         sequence = [
           { condition = "template"; value_template = "{{ direction | default('next') in ['next', 'previous'] and room | default('') in ${builtins.toJSON (builtins.attrNames policy.sceneCycles)} }}"; }
           { variables.scene_ids = sceneCandidates; }
-          { condition = "template"; value_template = "{{ scene_ids | count == 2 }}"; }
+          { condition = "template"; value_template = "{{ scene_ids | count > 0 and scene_ids | count == ${builtins.toJSON policy.sceneCycles}.get(room, []) | count }}"; }
           { variables.cycle_targets = ''
               ${scopedAllowed}
               {{ allowed }}
@@ -440,7 +444,7 @@ in
               {% endfor %}
               {% if expand(cycle_targets) | selectattr('state', 'eq', 'on') | list | count == 0 %}{% set ns.index = 0 %}{% endif %}
               {% set step = -1 if direction | default('next') == 'previous' else 1 %}
-              {{ (['off'] + scene_ids)[(ns.index + step) % 3] }}
+              {{ (['off'] + scene_ids)[(ns.index + step) % (1 + scene_ids | count)] }}
             ''; }
           { action = "script.lighting_take_manual_control"; data.affected_lights = "{{ cycle_targets }}"; }
           { choose = [{ conditions = "{{ next_scene == 'off' }}";
@@ -457,7 +461,7 @@ in
       };
       bilresa_all_lights_off = {
         alias = "BILRESA - All lights off";
-        description = "Turn off all six lamps and pause motion for 30 seconds. Another All off restarts the countdown; persistent Manual modes are unchanged.";
+        description = "Turn off all six lamps. Bathroom returns to Automatic after a 5-second pause; living/kitchen pauses for 30 seconds without changing its mode. Another All off restarts both countdowns; later manual input still wins.";
         icon = "mdi:lightbulb-group-off";
         mode = "queued";
         sequence = [ (dispatch "all_off" { }) ];
@@ -468,7 +472,7 @@ in
         id = "bilresa_manual_lighting";
         initial_state = true;
         alias = "BILRESA - Manual lighting controls";
-        description = "1/2: bedroom only; 3/4: living+kitchen at equal brightness. Short adjusts the group and enters Manual; double cycles Off/Medium/Full; top long toggles its motion mode (bedroom has none). Bottom long is global all-off with a 30-second motion pause, restarted by another All off.";
+        description = "1/2: bedroom only; 3/4: living+kitchen at equal brightness. Short adjusts the group and enters Manual; double follows the ordered group presets (living: all mid, all high, living-only mid, living-only high, Off); top long toggles its motion mode (bedroom has none). Bottom long is global all-off: rearm bathroom Auto after 5 seconds; living/kitchen keeps its mode with a 30-second pause. Another All off restarts both.";
         mode = "queued";
         max = 20;
         triggers = [
@@ -558,9 +562,12 @@ in
         # Automatic lighting has no human user context. Never feed its own
         # service calls back into manual ownership. Wrapped controls pause first.
         conditions = [{ condition = "template"; value_template = "{{ trigger.event.context.user_id is not none and trigger.event.context.parent_id is none }}"; }];
-        actions = [{
+        actions = [{ variables.native_lights = nativeTargets; } {
           action = "script.lighting_manual_action";
-          data = { operation = "takeover"; affected_lights = nativeTargets;
+          # Native app All lights off shares the exact remote/dashboard path.
+          # Partial-room off remains a deliberate Manual command.
+          data = { operation = "{{ 'all_off' if trigger.event.data.get('service') == 'turn_off' and native_lights | count == ${toString (builtins.length lights)} else 'takeover' }}";
+            affected_lights = "{{ native_lights }}";
             requested = ''
               {% set data = trigger.event.data.get('service_data', {}) %}
               {% set ns = namespace(data={}) %}
