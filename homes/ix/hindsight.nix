@@ -7,7 +7,7 @@
 let
   home = config.home.homeDirectory;
   hindsightConfig = {
-    api_url = "http://127.0.0.1:8888";
+    api_url = "http://oppy.tail5e510f.ts.net:8888";
     token_file = "${home}/.config/hindsight/api-token";
     state_dir = "${home}/.local/state/hindsight";
     reflect_mission = "Maintain durable technical knowledge about this Git repository across coding agents.";

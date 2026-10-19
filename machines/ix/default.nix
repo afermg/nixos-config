@@ -9,7 +9,7 @@
     ./direct-boot.nix
     ./dns.nix
     ./ejabberd.nix
-    ./hindsight.nix
+    # Hindsight runs on Oppy; keep model/DB/backup processing off ix.
     ./services.nix
     ./roborock-cleaning.nix
     ./thread.nix

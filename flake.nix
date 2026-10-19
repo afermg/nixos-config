@@ -137,8 +137,10 @@
         imports = [
           outputs.homeModules.amunoz
           outputs.homeModules.pi-msg
+          ./modules/shared/config/hindsight/server.nix
         ];
 
+        services.hindsightServer.enable = true;
         hindsightBackupSyncthing.enable = true;
 
         # Decrypt the existing Overleaf git-bridge credentials with

@@ -22,14 +22,15 @@ This roadmap applies **only to ix**. It is not a general nixos-config backlog.
 
 ## Memory and reader services
 
-- [x] Decide how ix should access Hindsight while moby is off: ix now owns the
-  REST API, restored database path, token file, backup unit, and Pi client URL.
-  The API is gated until a dedicated `~/.local/state/hindsight-codex/auth.json`
-  exists because the upstream local embedding stack crashes on the Pi 4 CPU.
-- [ ] Finish Hindsight activation after the dedicated Codex login, then verify
-  recall queries, restore-test the first ix archive, and only then revisit
-  retention/extraction workers. Never synchronize a live database with
-  Syncthing.
+- [x] Keep Hindsight processing off ix: Oppy owns the REST API, restored
+  database, local embeddings, extraction worker, and encrypted backup timer.
+  Pi clients use `http://oppy.tail5e510f.ts.net:8888`.
+- [x] Restore the last moby archive on Oppy (seven banks, 17,552 facts), verify
+  Pi retain/recall and remote recall from ix, and create an encrypted backup.
+  The old ix Hindsight units are persistently masked and its live OAuth file
+  removed. Never synchronize a live database with Syncthing.
+- [ ] Reconcile the next full ix generation with the removed Hindsight import;
+  keep the retirement masks until then. See `docs/hindsight.md`.
 - [x] Migrate Elfeed to ix so RSS state remains available when moby is off.
   ix has the copied database, 779 configured feeds after opening Elfeed, and a
   pre-copy backup under `~/.local/state/ix-migration/backups/`.

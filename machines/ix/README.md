@@ -316,16 +316,12 @@ the local GUI-password location.
 
 ## Reader and relay services
 
-Hindsight runtime state now lives on ix, with the Pi client pointed at
-`http://127.0.0.1:8888` locally and `http://ix.tail5e510f.ts.net:8888` over the
-tailnet. The service is intentionally skipped until a dedicated Codex OAuth file
-exists at `~/.local/state/hindsight-codex/auth.json`; create it with:
-
-```bash
-install -d -m 0700 ~/.local/state/hindsight-codex
-CODEX_HOME=~/.local/state/hindsight-codex codex login --device-auth
-sudo systemctl restart podman-hindsight-api.service
-```
+Hindsight runs on **Oppy**, not ix, to keep memory/model/database processing off
+the Pi. The lightweight client uses `http://oppy.tail5e510f.ts.net:8888` over
+Tailscale. The former ix API and backup units are stopped and persistently
+masked; the dedicated login was moved to Oppy. Do not reactivate them on ix.
+See [the Hindsight runbook](../../docs/hindsight.md) for configuration, backup,
+validation, and the remaining full-generation reconciliation.
 
 `pi-msg` is configured for ix with a separate `pi-msg-ix.age` secret and
 Tailscale-only ejabberd on `ix.tail5e510f.ts.net`. The moby and oppy client
