@@ -145,12 +145,29 @@ class ApplicationPolicyTests(unittest.TestCase):
         text = (HOME / "syncthing.nix").read_text()
         for name in ("globalAnnounceEnabled", "localAnnounceEnabled", "relaysEnabled"):
             self.assertIn(f"{name} = false;", text)
-        self.assertEqual(text.count("paused = true;"), 3)
+        # Backup enrollment must not unpause Documents or session migration.
+        self.assertEqual(text.count("paused = true;"), 2)
+        self.assertEqual(text.count('type = "receiveonly";'), 2)
         self.assertIn('guiAddress = "127.0.0.1:8384";', text)
         self.assertIn('/.pi/agent/sessions"', text)
-        self.assertIn('id = "ix-backups";', text)
-        self.assertIn('type = "sendonly";', text)
+        self.assertIn('deviceName = "ix";', text)
         self.assertNotIn('/.pi/agent"', text)
+
+    def test_backup_mesh_is_explicit_private_and_versioned(self):
+        text = (ROOT / "modules/shared/config/syncthing/ix-backups.nix").read_text()
+        self.assertIn('id = "ix-backups";', text)
+        self.assertIn('then "sendonly" else "receiveonly"', text)
+        self.assertIn('default = null;', text)
+        self.assertIn('assertion = cfg.deviceName != null;', text)
+        self.assertIn('natEnabled = false;', text)
+        self.assertIn('listenAddresses = [ "tcp://${peers.${cfg.deviceName}.host}:22000" ];', text)
+        self.assertIn('type = "trashcan";', text)
+        self.assertIn('params.cleanoutDays = "0";', text)
+        self.assertIn('"smallestFirst"', text)
+        self.assertIn('then "darwin002-backups" else name', text)
+        self.assertNotIn('/var/lib/hass', text)
+        self.assertNotIn('/var/lib/matter-server', text)
+        self.assertNotIn('/var/lib/thread', text)
 
     def test_ix_state_backups_are_encrypted_and_not_live_database_sync(self):
         text = (ROOT / "machines/ix/backups.nix").read_text()

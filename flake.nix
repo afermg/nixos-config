@@ -143,6 +143,7 @@
 
         services.hindsightServer.enable = true;
         hindsightBackupSyncthing.enable = true;
+        ixBackupMesh.deviceName = "oppy";
 
         # Decrypt the existing Overleaf git-bridge credentials with
         # ~/.ssh/id_ed25519 when this Home Manager profile activates.
@@ -261,7 +262,10 @@
             extraSpecialArgs = { inherit inputs outputs; };
             modules = [
               outputs.homeModules.amunoz
-              { hindsightBackupSyncthing.enable = true; }
+              {
+                hindsightBackupSyncthing.enable = true;
+                ixBackupMesh.deviceName = "spirit";
+              }
             ];
           };
 

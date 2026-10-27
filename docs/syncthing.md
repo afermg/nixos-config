@@ -62,13 +62,27 @@ Folder and device definitions are declarative. Make lasting changes in:
 
 - `modules/shared/config/syncthing/sync.nix` for `moby`
 - `modules/shared/config/syncthing/receiver.nix` for receiving hosts
-- `homes/ix/syncthing.nix` for ix's paused migration folders and encrypted
-  backup archive folder
+- `homes/ix/syncthing.nix` for ix's paused migration folders
+- `modules/shared/config/syncthing/ix-backups.nix` for the encrypted backup mesh
+  (each host must explicitly select its existing `ixBackupMesh.deviceName`)
 
-On ix, `documents` and `pi-sessions` are paused receive-only working copies.
-`ix-backups` is also paused, but send-only: it is intended for encrypted
-`ix-state-*.tar.zst.age` archives created by `ix-state-backup.timer`, not for
-live databases or credential directories.
+On ix, `documents` and `pi-sessions` remain paused receive-only working copies.
+`ix-backups` is now an active send-only folder. Receivers use receive-only mode,
+prefer smaller snapshots, and retain remote deletions indefinitely in trashcan
+versioning. The folder carries only closed encrypted artifacts: legacy
+`ix-state-*.tar.zst.age` archives and hourly `ix/measurements/` snapshots, never
+live databases or credential directories. There is no automatic archive pruning.
+
+Data listeners and peer addresses use Tailscale DNS on TCP 22000; discovery,
+relays and NAT traversal are disabled. The management GUI stays on loopback.
+Device keys/IDs are preserved, not generated or copied from another host.
+
+As of 2026-10-15, ix and Oppy are operational. One measurement artifact has been
+received through Syncthing and decrypted/integrity-checked on Oppy. A historical
+multi-GB archive backlog is a separate transfer: a connected peer or one verified
+snapshot does **not** mean the whole folder or all other mesh peers are up to date.
+Other receivers still need live identity/acceptance checks and activation.
+See [the measurement backup and restore notes](../machines/ix/HOME_ASSISTANT_BACKUP.md).
 
 Do not rely on changes made only in the web interface. In particular,
 `overrideFolders = true` and `overrideDevices = true` on `moby` cause the Nix

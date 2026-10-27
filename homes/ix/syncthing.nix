@@ -1,5 +1,5 @@
-# Preserve the existing tailnet-only policy. Enrollment and remote acceptance
-# must be verified before unpausing; a seeded copy is not live synchronization.
+# Documents/session migration stays paused. Only encrypted backup replication
+# is enabled; enrollment and receiver completion must still be verified.
 { config, ... }:
 let
   peers = [
@@ -9,6 +9,12 @@ let
   ];
 in
 {
+  imports = [ ../../modules/shared/config/syncthing/ix-backups.nix ];
+  ixBackupMesh = {
+    enable = true;
+    deviceName = "ix";
+  };
+
   services.syncthing = {
     enable = true;
     guiAddress = "127.0.0.1:8384";
@@ -19,7 +25,6 @@ in
         globalAnnounceEnabled = false;
         localAnnounceEnabled = false;
         relaysEnabled = false;
-        listenAddresses = [ "tcp://0.0.0.0:22000" ];
         urAccepted = -1;
       };
       devices = {
@@ -62,15 +67,6 @@ in
           type = "receiveonly";
           ignorePerms = true;
           ignorePatterns = [ ".rsync-partial" ];
-        };
-        ix-backups = {
-          id = "ix-backups";
-          label = "ix encrypted backups";
-          path = "${config.home.homeDirectory}/.local/share/syncthing/ix-backups";
-          devices = peers;
-          paused = true;
-          type = "sendonly";
-          ignorePerms = true;
         };
       };
     };

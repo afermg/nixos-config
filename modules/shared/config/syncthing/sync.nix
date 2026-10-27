@@ -120,6 +120,12 @@ let
   ];
 in
 {
+  imports = [ ./ix-backups.nix ];
+  ixBackupMesh = {
+    enable = true;
+    deviceName = "moby";
+  };
+
   services.syncthing = {
     enable = true;
     guiAddress = "127.0.0.1:8384";
@@ -230,10 +236,8 @@ in
         };
       };
 
-      # Peers are addressed through Tailscale DNS; listeners avoid pinning a
-      # tailnet IP so MagicDNS reassignments do not require configuration edits.
+      # ixBackupMesh binds the listener to this host's Tailscale DNS name.
       options = {
-        listenAddresses = [ "tcp://:22000" ];
         globalAnnounceEnabled = false;
         localAnnounceEnabled = false;
         relaysEnabled = false;
