@@ -1,14 +1,60 @@
-# Home Assistant backup proposal (not yet enabled)
+# Home Assistant backups
 
-The repository's `ix-state-backup.timer` policy does not include Home Assistant,
-Matter Server or Thread data. The previously deployed isolated source has additional
-legacy archive entries for those directories; those are **not evidence of a
-consistent live SQLite/controller snapshot or a successful off-device restore**.
-Its `ix-backups` Syncthing folder is documented as paused/send-only pending remote
-acceptance. No reliable off-device Home Assistant backup has been demonstrated. A second archive on ix's same HDD would not
-protect against that disk/USB path failing.
+## Active measurement backup (2026-10-15)
 
-## Recommended design
+`ix-measurement-backup.timer` runs hourly with up to two minutes of jitter and
+catches missed runs after boot. It uses SQLite's online backup API against the
+read-only Recorder source, checks the standalone snapshot's full integrity, then
+compresses and age-encrypts it. Plaintext stays in a private `/run` directory.
+Completed ciphertext and its checksum are atomically published under:
+
+```text
+/home/amunoz/.local/share/syncthing/ix-backups/ix/measurements/
+```
+
+Publication uses Linux `O_TMPFILE` in the destination mount: encrypted staging
+has no visible name until complete. This preserves the strict filesystem sandbox
+without cross-bind-mount hard links or partially synchronized archives. Names are
+append-only; there is no automatic archive pruning. Capture is limited to 512 MiB
+and a three-minute service deadline, with idle I/O and a 768 MiB memory limit.
+
+The `ix-backups` folder is send-only on ix and receive-only on its mesh receivers.
+Oppy is enrolled and running. The first snapshot was received **through Syncthing**
+and independently decrypted on Oppy; its manifest/checksum matched and SQLite's
+full integrity check passed (1,020 states, all 11 streams). This is a disposable
+restore check, not replacement of the live database. Legacy archive transfers and
+other receivers have separate completion status; do not infer full mesh completion.
+
+Encryption uses the personal SSH recipient and a dedicated recovery recipient.
+Keep the recovery private key separately/offline, never on ix or in the shared
+folder. Do not synchronize live SQLite files, WALs or controller directories.
+
+```bash
+systemctl status ix-measurement-backup.service ix-measurement-backup.timer
+journalctl -u ix-measurement-backup.service --no-pager -n 20
+```
+
+Check the receiver GUI's pending/failed items too. The publisher deliberately logs
+`replication_verified=false`: local success cannot establish remote delivery.
+For a restore check, verify the `.sha256`, decrypt/decompress into private temporary
+RAM storage, check both manifest hashes and `PRAGMA integrity_check` on the closed
+SQLite copy, then remove that plaintext. Never overwrite live Recorder data or
+start cloned Matter/Thread controllers as a test.
+
+Missing/stale-stream alerts, unattended off-host restore checks and the guarded
+storage-recovery watchdog are not yet installed. A clean backup does not resolve
+the earlier USB/storage reliability problem or repair older quarantined history.
+
+## Full HA/controller backup proposal (not yet automated)
+
+The deployed isolated source retains extra legacy `ix-state-backup.timer` entries
+for HA, Matter and Thread which the checkout's older `backups.nix` lacks. Preserve
+that coverage when deploying; do not activate the checkout wholesale. Those legacy
+archives are **not evidence of consistent live SQLite/controller snapshots**.
+Coordinated off-host preservation performed during recovery is separate from the
+measurement-only hourly job above.
+
+### Recommended design
 
 1. Use HA's native **Backup integration** for `/var/lib/hass` on this NixOS/Core
    installation, including `.storage` (original owner/users, entities, integration
@@ -45,10 +91,9 @@ protect against that disk/USB path failing.
    last-success time. Refuse capture if the current full-kernel storage fault
    gate reports new disk/USB/power errors; do not add automatic repair/retry loops.
 
-## Approval needed before enabling
+### Approval needed for the comprehensive proposal
 
-Confirm Moby (or another host) as destination, retention and the coordinated
-external-state snapshot window. No new application-data backup or background
-backup job has been enabled or manually started by this work; existing timer
-activity has not been audited as part of this proposal. Existing archives, current data,
-credentials, accounts and controller identities are untouched.
+Confirm retention and a coordinated external-state snapshot window before adding
+automated full HA/Matter/Thread captures. The active measurement job does not stop
+those services, replace identities, restore quarantined history, or substitute for
+that comprehensive backup policy.

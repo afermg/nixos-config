@@ -5,6 +5,7 @@
     inputs.home-manager.nixosModules.home-manager
     ../../modules/nixos/arm-emulation.nix
     ./backups.nix
+    ./measurement-backup.nix
     ./hardware.nix
     ./direct-boot.nix
     ./dns.nix
