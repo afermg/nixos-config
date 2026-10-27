@@ -31,58 +31,46 @@ class ModeRuntimeTests(unittest.IsolatedAsyncioTestCase):
         await self.run_script('lighting_toggle_automatic',{'room':'bathroom'});await self.hass.async_block_till_done()
         self.assertEqual(self.hass.states.get(z['mode']).state,'Automatic');self.assert_priority_state('bathroom')
 
-    async def test_all_off_rearms_only_bathroom_and_resumes_after_five_seconds(self):
-        import asyncio
-        from homeassistant.core import callback
+    async def test_all_off_rearms_both_zones_with_two_minute_timers(self):
         await self.setup_priority_runtime();await self.occupy_dark(*base.ZONES)
         for room in base.ZONES:
             await self.run_script('lighting_manual_action',{'operation':'level','room':room,'level':204})
-        await self.hass.async_block_till_done()
-        z=base.ZONES['bathroom'];living=base.ZONES['living_kitchen']
         for _ in range(2):await self.run_script('bilresa_all_lights_off')
         await self.hass.async_block_till_done()
-        self.assertEqual(self.hass.states.get(z['mode']).state,'Automatic')
-        self.assertEqual(self.hass.states.get(living['mode']).state,'Manual')
-        self.assertEqual(self.hass.states.get(base.LIGHTS[5]).state,'off')
-        self.assertEqual(self.hass.states.get(z['offTimer']).attributes['duration'],'0:00:05')
-        finished=asyncio.Event();started=self.hass.loop.time()
-        @callback
-        def observe(event):
-            if self.hass.states.is_state(z['offHold'],'off'):finished.set()
-        unsub=self.hass.bus.async_listen('state_changed',observe)
-        try:
-            await asyncio.wait_for(finished.wait(),8);await self.hass.async_block_till_done()
-            self.assertGreater(self.hass.loop.time()-started,3.5)
-            self.assert_priority_state('bathroom')
-            self.assertEqual(self.hass.states.get(living['offTimer']).state,'active')
-            await self.hass.services.async_call('timer','finish',{'entity_id':living['offTimer']},blocking=True)
-            await self.hass.async_block_till_done()
-            self.assertEqual(self.hass.states.get(living['mode']).state,'Manual')
-            self.assertTrue(all(self.hass.states.is_state(e,'off') for e in living['lights']))
-        finally:unsub()
+        for z in base.ZONES.values():
+            self.assertEqual(self.hass.states.get(z['mode']).state,'Automatic')
+            self.assertEqual(self.hass.states.get(z['offTimer']).attributes['duration'],'0:02:00')
+            self.assertTrue(all(self.hass.states.is_state(e,'off') for e in z['lights']))
+        await self.hass.services.async_call('timer','finish',{'entity_id':[z['offTimer'] for z in base.ZONES.values()]},blocking=True)
+        await self.hass.async_block_till_done()
+        for room in base.ZONES:self.assert_priority_state(room)
+        self.assertTrue(all(self.hass.states.get(e).attributes['brightness']==204 for e in base.ZONES['living_kitchen']['lights']))
 
     async def test_manual_input_after_all_off_is_not_undone_by_expiry_or_reload(self):
-        await self.setup_priority_runtime();await self.occupy_dark('bathroom')
-        z=base.ZONES['bathroom']
-        await self.run_script('bilresa_all_lights_off');await self.hass.async_block_till_done()
-        await self.run_script('lighting_manual_action',{'operation':'level','room':'bathroom','level':123})
-        await self.hass.services.async_call('timer','finish',{'entity_id':z['offTimer']},blocking=True)
-        self.hass.bus.async_fire('automation_reloaded');await self.hass.async_block_till_done()
-        self.assertEqual(self.hass.states.get(z['mode']).state,'Manual')
-        self.assertEqual(self.hass.states.get(base.LIGHTS[5]).attributes['brightness'],123)
+        await self.setup_priority_runtime();await self.occupy_dark(*base.ZONES)
+        for room,z in base.ZONES.items():
+            with self.subTest(room=room):
+                await self.run_script('bilresa_all_lights_off');await self.hass.async_block_till_done()
+                await self.run_script('lighting_manual_action',{'operation':'level','room':room,'level':123})
+                await self.hass.services.async_call('timer','finish',{'entity_id':z['offTimer']},blocking=True)
+                self.hass.bus.async_fire('automation_reloaded');await self.hass.async_block_till_done()
+                self.assertEqual(self.hass.states.get(z['mode']).state,'Manual')
+                self.assertTrue(all(self.hass.states.get(e).attributes['brightness']==123 for e in z['lights']))
 
-    async def test_native_app_all_off_uses_same_bathroom_rearm_path(self):
+    async def test_native_app_all_off_uses_same_both_zone_rearm_path(self):
         from homeassistant.core import Context
         await self.setup_priority_runtime();await self.occupy_dark(*base.ZONES)
-        z=base.ZONES['bathroom']
-        await self.run_script('lighting_manual_action',{'operation':'level','room':'bathroom','level':123})
+        for room in base.ZONES:
+            await self.run_script('lighting_manual_action',{'operation':'level','room':room,'level':123})
         await self.hass.services.async_call('light','turn_off',{'entity_id':base.LIGHTS},blocking=True,context=Context(user_id='human'))
         await self.hass.async_block_till_done()
-        self.assertEqual(self.hass.states.get(z['mode']).state,'Automatic')
-        self.assertEqual(self.hass.states.get(z['offTimer']).state,'active')
+        for z in base.ZONES.values():
+            self.assertEqual(self.hass.states.get(z['mode']).state,'Automatic')
+            self.assertEqual(self.hass.states.get(z['offTimer']).state,'active')
         self.assertTrue(all(self.hass.states.is_state(e,'off') for e in base.LIGHTS))
-        await self.hass.services.async_call('timer','finish',{'entity_id':z['offTimer']},blocking=True)
-        await self.hass.async_block_till_done();self.assert_priority_state('bathroom')
+        for room,z in base.ZONES.items():
+            await self.hass.services.async_call('timer','finish',{'entity_id':z['offTimer']},blocking=True)
+            await self.hass.async_block_till_done();self.assert_priority_state(room)
 
     async def test_automatic_profile_with_human_parent_context_never_latches_manual(self):
         from homeassistant.core import Context

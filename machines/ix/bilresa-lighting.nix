@@ -27,7 +27,7 @@ let
            and (not is_state('${zone.mode}', 'Manual') or not is_state('${zone.manual}', 'on') or not is_state('${zone.active}', 'off')) }}
       '';
       # Deliberate manual commands latch the mode; automatic reports never do.
-      # All off handles its own pause and bathroom Automatic selection below.
+      # All off handles its own pause and Automatic selection below.
       sequence = [
         { "if" = "{{ not is_state('${zone.mode}', 'Manual') }}";
           "then" = [{ action = "input_select.select_option";
@@ -55,6 +55,23 @@ let
     {% endfor %}
     {% set allowed = ${builtins.toJSON lights} %}
     {{ allowed if 'all' in ns.ids else allowed | select('in', ns.ids) | list }}
+  '';
+  # Runtime-only context guard: six full ULIDs plus a monotonic evicted-timestamp
+  # cutoff fit input_text's 255-character limit. Never forget an in-flight scene
+  # merely because it is old. Ambiguous older/same-ms native Off fails to Manual.
+  nativeSceneContexts = "input_text.lighting_native_scene_contexts";
+  nativeContextPattern = "^[0-7][0123456789ABCDEFGHJKMNPQRSTVWXYZ]{25}$";
+  nativeGuard = ''
+    {% set guard = states('${nativeSceneContexts}') | from_json({}) %}
+    {% set checked = namespace(valid=guard is mapping and guard.get('ids') is iterable
+        and guard.get('ids') is not string and guard.get('ids') is not mapping
+        and guard.get('ids', []) | count <= 6 and guard.get('cutoff') is string) %}
+    {% if checked.valid %}
+      {% for id in guard.ids %}
+        {% if id is not string or not (id is match('${nativeContextPattern}')) %}{% set checked.valid = false %}{% endif %}
+      {% endfor %}
+      {% if guard.cutoff != "" and not (guard.cutoff is match('^[0-7][0123456789ABCDEFGHJKMNPQRSTVWXYZ]{9}$')) %}{% set checked.valid = false %}{% endif %}
+    {% endif %}
   '';
   sceneSafe = ''
     {% set members = state_attr(scene_entity | default(""), 'entity_id') or [] %}
@@ -97,6 +114,12 @@ in
       value = { name = "${zone.name} - Motion paused by All off"; icon = "mdi:motion-sensor-off"; };
       # Temporary All off bookkeeping is independent of the persistent mode.
     }) (builtins.attrValues zones));
+    input_text.lighting_native_scene_contexts = {
+      name = "Lighting - Native scene context guard";
+      max = 255;
+      # Contexts cannot survive the HA process. Never restore old suppression.
+      initial = builtins.toJSON { ids = []; cutoff = ""; };
+    };
     input_select = builtins.listToAttrs (builtins.map (zone: {
       name = builtins.replaceStrings [ "input_select." ] [ "" ] zone.mode;
       value = { name = "${zone.name} - Lighting mode";
@@ -118,14 +141,14 @@ in
     }) (builtins.attrNames zones);
     timer = builtins.listToAttrs (builtins.map (zone: {
       name = builtins.replaceStrings [ "timer." ] [ "" ] zone.offTimer;
-      value = { name = "${zone.name} - All off motion pause";
+      value = { name = "${zone.name} - Manual Off motion pause";
         duration.seconds = zone.offPauseSeconds; restore = true; icon = "mdi:timer-sand"; };
     }) (builtins.attrValues zones));
     # Idle also covers cancellation and an expiry while HA was stopped. Reload
     # reconciliation prevents a missed event from leaving stale ownership behind.
     "automation lighting all off expiry" = builtins.map (key: let zone = zones.${key}; in {
       id = "lighting_all_off_expiry_${key}";
-      alias = "${zone.name} - Resume motion after All off";
+      alias = "${zone.name} - Resume motion after manual Off";
       initial_state = true; mode = "queued"; max = 5;
       triggers = [
         { trigger = "state"; entity_id = zone.offTimer; to = "idle"; }
@@ -140,6 +163,28 @@ in
         data = { operation = "expire_all_off"; room = key; }; }];
     }) (builtins.attrNames zones);
     script = {
+      lighting_manual_off = {
+        alias = "Lighting - Internal manual Off cooldown";
+        description = "Queue worker: explicit Off rearms affected motion zones behind a two-minute timer; later manual input wins.";
+        mode = "queued"; max = 20;
+        sequence = [
+          { condition = "template"; value_template = "{{ affected_lights is defined and affected_lights is not string and affected_lights | count > 0 and affected_lights | reject('in', ${builtins.toJSON lights}) | list | count == 0 }}"; }
+        ] ++ builtins.map (zone: {
+          choose = [{
+            conditions = "{{ affected_lights | select('in', ${builtins.toJSON zone.lights}) | list | count > 0 }}";
+            # Arm the timer before selecting Automatic or dispatching lamp Off.
+            sequence = [
+              { action = "timer.start"; target.entity_id = zone.offTimer;
+                data.duration = zone.offPauseSeconds; }
+              { action = "input_boolean.turn_on"; target.entity_id = [ zone.offHold zone.manual ]; }
+              { action = "input_boolean.turn_off"; target.entity_id = zone.active; }
+              { action = "input_select.select_option"; target.entity_id = zone.mode; data.option = "Automatic"; }
+            ];
+          }];
+        }) (builtins.attrValues zones) ++ [
+          { action = "light.turn_off"; target.entity_id = "{{ affected_lights }}"; }
+        ];
+      };
       lighting_take_manual_control = {
         alias = "Lighting - Take manual control";
         mode = "queued";
@@ -157,7 +202,7 @@ in
         mode = "queued";
         max = 20;
         sequence = [
-          { condition = "template"; value_template = "{{ operation | default('') in ['scene', 'cycle', 'brightness', 'level', 'temperature', 'all_off', 'room_on', 'room_off', 'resume', 'toggle_mode', 'mode_changed', 'expire_all_off', 'takeover', 'motion', 'ambient'] }}"; }
+          { condition = "template"; value_template = "{{ operation | default('') in ['scene', 'cycle', 'brightness', 'level', 'temperature', 'all_off', 'room_on', 'room_off', 'resume', 'toggle_mode', 'mode_changed', 'expire_all_off', 'takeover', 'native_off', 'motion', 'ambient'] }}"; }
           { condition = "template"; value_template = "{{ operation not in ['room_on', 'room_off', 'brightness', 'level', 'resume', 'toggle_mode', 'mode_changed', 'expire_all_off', 'motion', 'scene'] or room | default('all') in ${builtins.toJSON ((builtins.attrNames policy.roomAreas) ++ [ "all" ])} }}"; }
           { condition = "template"; value_template = "{{ operation != 'ambient' or room | default('') == 'bathroom' }}"; }
           { condition = "template"; value_template = "{{ operation != 'cycle' or (room | default('') in ${builtins.toJSON (builtins.attrNames policy.sceneCycles)} and direction | default('next') in ['next', 'previous']) }}"; }
@@ -165,7 +210,7 @@ in
           { condition = "template"; value_template = "{{ operation != 'temperature' or (is_number(kelvin | default(none)) and 2202 <= kelvin | float <= 6535) }}"; }
           { condition = "template"; value_template = "{{ operation != 'brightness' or (is_number(scale | default(none)) and 0 < scale | float(0) <= 2) }}"; }
           { condition = "template"; value_template = "{{ operation != 'level' or (is_number(level | default(none)) and 0 <= level | float(0) <= 255) }}"; }
-          { condition = "template"; value_template = "{{ operation != 'takeover' or (affected_lights is defined and affected_lights is not string and affected_lights | reject('in', ${builtins.toJSON lights}) | list | count == 0) }}"; }
+          { condition = "template"; value_template = "{{ operation not in ['takeover', 'native_off'] or (affected_lights is defined and affected_lights is not string and affected_lights | reject('in', ${builtins.toJSON lights}) | list | count == 0) }}"; }
           { condition = "template"; value_template = ''
               {% if operation == 'scene' %}${sceneSafe}{% else %}{{ true }}{% endif %}
             ''; }
@@ -292,7 +337,7 @@ in
             default = [
               { variables.manual_targets = ''
                   {{ state_attr(scene_entity, 'entity_id') if operation == 'scene'
-                     else affected_lights if operation == 'takeover'
+                     else affected_lights if operation in ['takeover', 'native_off']
                      else ${builtins.toJSON lights} if operation == 'all_off'
                      else available_targets if operation == 'level' and (level | float == 0 or lit | count == 0)
                      else (lit | map(attribute='entity_id') | list if lit | count > 0 else available_targets) if operation == 'temperature'
@@ -300,8 +345,9 @@ in
                      else targets }}
                 ''; }
               { condition = "template"; value_template = "{{ manual_targets | count > 0 }}"; }
+              { variables.manual_off = "{{ operation in ['all_off', 'room_off', 'native_off'] or (operation == 'level' and level | float == 0) }}"; }
               { action = "script.lighting_take_manual_control";
-                data = { affected_lights = "{{ manual_targets }}"; temporary_only = "{{ operation == 'all_off' }}"; }; }
+                data = { affected_lights = "{{ manual_targets }}"; temporary_only = "{{ manual_off }}"; }; }
               {
                 choose = [
                   {
@@ -326,31 +372,13 @@ in
                       data.color_temp_kelvin = "{{ kelvin | int }}"; }];
                   }
                   {
-                    conditions = "{{ operation == 'all_off' }}";
-                    # Start/restart a bounded pause before any lamp command.
-                    # No blocking delay: manual controls keep using the queue.
-                    sequence = (builtins.map (zone: {
-                      action = "timer.start"; target.entity_id = zone.offTimer;
-                      data.duration = zone.offPauseSeconds;
-                    }) (builtins.attrValues zones)) ++ [
-                      { action = "input_boolean.turn_on";
-                        target.entity_id = builtins.concatMap (zone: [ zone.offHold zone.manual ]) (builtins.attrValues zones); }
-                      { action = "input_boolean.turn_off";
-                        target.entity_id = builtins.map (zone: zone.active) (builtins.attrValues zones); }
-                      # All off explicitly rearms bathroom auto-light, but only
-                      # after its timer is active. Later manual input still wins.
-                      { action = "input_select.select_option";
-                        target.entity_id = zones.bathroom.mode; data.option = "Automatic"; }
-                      { action = "light.turn_off"; target.entity_id = lights; }
-                    ];
+                    conditions = "{{ manual_off }}";
+                    sequence = [{ action = "script.lighting_manual_off";
+                      data.affected_lights = "{{ manual_targets }}"; }];
                   }
                   {
-                    conditions = "{{ operation in ['room_on', 'room_off'] and targets | count > 0 }}";
-                    sequence = [{ action = "{{ 'light.turn_on' if operation == 'room_on' else 'light.turn_off' }}"; target.entity_id = "{{ targets }}"; }];
-                  }
-                  {
-                    conditions = "{{ operation == 'level' and level | float == 0 }}";
-                    sequence = [{ action = "light.turn_off"; target.entity_id = "{{ manual_targets }}"; }];
+                    conditions = "{{ operation == 'room_on' and targets | count > 0 }}";
+                    sequence = [{ action = "light.turn_on"; target.entity_id = "{{ targets }}"; }];
                   }
                   {
                     conditions = "{{ operation == 'level' and lit | count == 0 }}";
@@ -374,9 +402,9 @@ in
                   }
                 ];
               }
-              # Never turn a temporary All off into a persistent manual hold.
+              # Never turn a temporary manual Off into a persistent manual hold.
               { action = "script.lighting_take_manual_control";
-                data = { affected_lights = "{{ manual_targets }}"; temporary_only = "{{ operation == 'all_off' }}"; }; }
+                data = { affected_lights = "{{ manual_targets }}"; temporary_only = "{{ manual_off }}"; }; }
             ] ++ builtins.map (key: let zone = zones.${key}; in {
               choose = [{
                 conditions = "{{ manual_targets | select('in', ${builtins.toJSON zone.lights}) | list | count > 0 }}";
@@ -419,7 +447,7 @@ in
       };
       lighting_cycle_group = {
         alias = "Lighting - Internal group scene cycle";
-        description = "Queue worker: validate every ordered preset, including OFF members, before any command; Off is scoped and enters Manual.";
+        description = "Queue worker: validate every ordered preset, including OFF members, before any command; Off starts the scoped two-minute motion cooldown; presets enter Manual.";
         mode = "queued";
         fields.direction = {
           name = "Direction"; default = "next";
@@ -446,10 +474,12 @@ in
               {% set step = -1 if direction | default('next') == 'previous' else 1 %}
               {{ (['off'] + scene_ids)[(ns.index + step) % (1 + scene_ids | count)] }}
             ''; }
-          { action = "script.lighting_take_manual_control"; data.affected_lights = "{{ cycle_targets }}"; }
           { choose = [{ conditions = "{{ next_scene == 'off' }}";
-              sequence = [{ action = "light.turn_off"; target.entity_id = "{{ cycle_targets }}"; }]; }];
-            default = [{ action = "scene.turn_on"; target.entity_id = "{{ next_scene }}"; }]; }
+              sequence = [{ action = "script.lighting_manual_off"; data.affected_lights = "{{ cycle_targets }}"; }]; }];
+            default = [
+              { action = "script.lighting_take_manual_control"; data.affected_lights = "{{ cycle_targets }}"; }
+              { action = "scene.turn_on"; target.entity_id = "{{ next_scene }}"; }
+            ]; }
         ];
       };
       bilresa_adjust_lights = {
@@ -461,7 +491,7 @@ in
       };
       bilresa_all_lights_off = {
         alias = "BILRESA - All lights off";
-        description = "Turn off all six lamps. Bathroom returns to Automatic after a 5-second pause; living/kitchen pauses for 30 seconds without changing its mode. Another All off restarts both countdowns; later manual input still wins.";
+        description = "Turn off all six lamps and rearm both motion zones behind two-minute pauses. Another Off restarts affected countdowns; later manual input still wins.";
         icon = "mdi:lightbulb-group-off";
         mode = "queued";
         sequence = [ (dispatch "all_off" { }) ];
@@ -472,7 +502,7 @@ in
         id = "bilresa_manual_lighting";
         initial_state = true;
         alias = "BILRESA - Manual lighting controls";
-        description = "1/2: bedroom only; 3/4: living+kitchen at equal brightness. Short adjusts the group and enters Manual; double follows the ordered group presets (living: all mid, all high, living-only mid, living-only high, Off); top long toggles its motion mode (bedroom has none). Bottom long is global all-off: rearm bathroom Auto after 5 seconds; living/kitchen keeps its mode with a 30-second pause. Another All off restarts both.";
+        description = "1/2: bedroom only; 3/4: living+kitchen at equal brightness. Short adjusts the group and enters Manual; double follows the ordered group presets (living: all mid, all high, living-only mid, living-only high, Off); top long toggles its motion mode (bedroom has none). Bottom long is global all-off: rearm bathroom and living/kitchen Auto after two minutes. Another All off restarts both.";
         mode = "queued";
         max = 20;
         triggers = [
@@ -507,16 +537,19 @@ in
         ]; }];
       }
       {
-        id = "lighting_native_scene_manual_override";
-        initial_state = true;
-        alias = "Lighting - Pause motion for a UI lighting scene";
-        description = "Human-selected native scenes take manual ownership. Ignore automated and wrapped calls.";
-        mode = "queued";
+        id = "lighting_native_light_manual_override";
+        alias = "Lighting - Room ownership for direct manual lamp controls";
+        description = "Serialize native scene/light requests; scene subcalls retain Manual, independent explicit Off starts a scoped two-minute cooldown.";
+        initial_state = true; mode = "queued"; max = 20;
         triggers = [{
           trigger = "event"; event_type = "call_service";
           event_data = { domain = "scene"; service = "turn_on"; };
-        }];
+        }] ++ builtins.map (service: {
+          trigger = "event"; event_type = "call_service";
+          event_data = { domain = "light"; inherit service; };
+        }) [ "turn_on" "turn_off" "toggle" ];
         conditions = [{ condition = "template"; value_template = ''
+          {% if trigger.event.data.get('domain') == 'scene' %}
           {% set ids = trigger.event.data.get('service_data', {}).get('entity_id', []) %}
           {% set ids = [ids] if ids is string else ids %}
           {% set ns = namespace(safe=ids | count > 0) %}
@@ -528,9 +561,25 @@ in
               {% set ns.safe = false %}
             {% endif %}
           {% endfor %}
+          {% else %}{% set ns = namespace(safe=true) %}{% endif %}
           {{ ns.safe and trigger.event.context.user_id is not none and trigger.event.context.parent_id is none }}
         ''; }];
-        actions = [{
+        actions = [{ choose = [{
+          conditions = "{{ trigger.event.data.get('domain') == 'scene' }}";
+          # Save context BEFORE waiting on the lighting queue. HA's native scene
+          # reproduction preserves the same human context in its light subcalls.
+          sequence = [{ action = "input_text.set_value"; target.entity_id = nativeSceneContexts;
+            data.value = ''
+              ${nativeGuard}
+              {% set id = trigger.event.context.id %}
+              {% if checked.valid and id is string and id is match('${nativeContextPattern}') %}
+                {% set ids = guard.ids | reject('eq', id) | list + [id] %}
+                {% set cutoff = ([guard.cutoff, ids[0][:10]] | max) if ids | count > 6 else guard.cutoff %}
+                {{ {'ids': ids[-6:], 'cutoff': cutoff} | to_json }}
+              {% elif checked.valid %}{{ guard | to_json }}
+              {% else %}invalid{% endif %}
+            '';
+          }] ++ [{
           action = "script.lighting_manual_action";
           data = {
             operation = "takeover";
@@ -548,25 +597,18 @@ in
             '';
           };
         }];
-      }
-      {
-        id = "lighting_native_light_manual_override";
-        alias = "Lighting - Room ownership for direct manual lamp controls";
-        initial_state = true;
-        mode = "queued";
-        max = 20;
-        triggers = builtins.map (service: {
-          trigger = "event"; event_type = "call_service";
-          event_data = { domain = "light"; inherit service; };
-        }) [ "turn_on" "turn_off" "toggle" ];
-        # Automatic lighting has no human user context. Never feed its own
-        # service calls back into manual ownership. Wrapped controls pause first.
-        conditions = [{ condition = "template"; value_template = "{{ trigger.event.context.user_id is not none and trigger.event.context.parent_id is none }}"; }];
-        actions = [{ variables.native_lights = nativeTargets; } {
+        }]; default = [{ variables.native_lights = nativeTargets; } {
+          variables.off_can_resume = ''
+            ${nativeGuard}
+            {% set id = trigger.event.context.id %}
+            {{ checked.valid and id is string and id is match('${nativeContextPattern}')
+               and id not in guard.ids and (guard.cutoff == "" or id[:10] > guard.cutoff) }}
+          '';
+        } {
           action = "script.lighting_manual_action";
-          # Native app All lights off shares the exact remote/dashboard path.
-          # Partial-room off remains a deliberate Manual command.
-          data = { operation = "{{ 'all_off' if trigger.event.data.get('service') == 'turn_off' and native_lights | count == ${toString (builtins.length lights)} else 'takeover' }}";
+          # Only explicit human Off starts the affected zones' cooldown.
+          # Automated/child-context Off and mixed scene members never enter it.
+          data = { operation = "{{ 'native_off' if trigger.event.data.get('service') == 'turn_off' and off_can_resume else 'takeover' }}";
             affected_lights = "{{ native_lights }}";
             requested = ''
               {% set data = trigger.event.data.get('service_data', {}) %}
@@ -579,7 +621,8 @@ in
               {{ ns.data }}
             '';
           };
-        }];
+        }]; }];
+
       }
     ];
   };

@@ -76,7 +76,7 @@ let
     let zone = zones.${key}; in {
       inherit id;
       alias = name;
-      description = "All off pauses this zone for ${toString zone.offPauseSeconds} seconds and rearms bathroom Automatic mode; scoped Resume can end the pause early. Later manual input preserves user settings until explicitly resumed; in Automatic mode, bathroom brightness is 20% midnight-07:00, otherwise 80% (local time). Lamp-off lux only gates activation. Clear for ${toString zone.idleMinutes} minutes before automatic off. Managed in Nix.";
+      description = "Explicit manual Off pauses this zone for ${toString zone.offPauseSeconds} seconds and rearms its Automatic mode; scoped Resume can end the pause early. Later manual input preserves user settings until explicitly resumed; in Automatic mode, bathroom brightness is 20% midnight-07:00, otherwise 80% (local time). Lamp-off lux only gates activation. Clear for ${toString zone.idleMinutes} minutes before automatic off. Managed in Nix.";
       mode = "queued"; max = 5; initial_state = true;
       conditions = [
         { condition = "template"; value_template = "{{ trigger.id != 'resume' or trigger.event.data.get('room', 'all') in ['all', '${key}'] }}"; }

@@ -17,7 +17,7 @@ CONFIG = evaluate('bilresa-lighting.nix')
 ROOM = evaluate('room-lighting.nix', '{pkgs.writeText = name: text: text;}')
 MOTION_CONFIG = evaluate('motion-lighting.nix')
 SCRIPTS = CONFIG['script'] | ROOM['script'] | MOTION_CONFIG['script']
-AUTOMATION, NATIVE_SCENE, NATIVE_LIGHT = CONFIG['automation bilresa']
+AUTOMATION, NATIVE_ROUTER = CONFIG['automation bilresa']
 POLICY = json.loads(subprocess.check_output(['nix','eval','--impure','--json','--expr',
     f'import {ROOT / "lighting-policy.nix"}'],text=True))
 ZONES = POLICY['motionZones']
@@ -80,7 +80,7 @@ class ButtonRuntimeTests(unittest.IsolatedAsyncioTestCase):
                 text=record.getMessage()
                 if record.levelno>=logging.ERROR or 'Maximum number of runs' in text:
                     self.script_errors.append(text)
-        self.error_handler=ScriptErrors();logging.getLogger('homeassistant.helpers.script').addHandler(self.error_handler)
+        self.error_handler=ScriptErrors();logging.getLogger('homeassistant').addHandler(self.error_handler);logging.getLogger('asyncio').addHandler(self.error_handler)
         self.directory=tempfile.TemporaryDirectory(prefix='lighting-test-')
         self.hass=HomeAssistant(self.directory.name);self.calls=[];self.scripts={}
         from homeassistant.helpers import area_registry,device_registry,entity_registry,label_registry,floor_registry
@@ -116,6 +116,7 @@ class ButtonRuntimeTests(unittest.IsolatedAsyncioTestCase):
         for entity in LIGHTS:self.hass.states.async_set(entity,'off',{'brightness':50})
         self.hass.states.async_set('input_boolean.lighting_manual_override','off')
         self.seed_ambient(100)
+        self.hass.states.async_set('input_text.lighting_native_scene_contexts',CONFIG['input_text']['lighting_native_scene_contexts']['initial'])
         for zone in ZONES.values():
             self.hass.states.async_set(zone['manual'],'off')
             self.hass.states.async_set(zone['offHold'],'off')
@@ -138,7 +139,7 @@ class ButtonRuntimeTests(unittest.IsolatedAsyncioTestCase):
         for script in self.scripts.values():await script.async_stop()
         await self.hass.async_stop(force=True);self.directory.cleanup()
         import logging
-        logging.getLogger('homeassistant.helpers.script').removeHandler(self.error_handler)
+        logging.getLogger('homeassistant').removeHandler(self.error_handler);logging.getLogger('asyncio').removeHandler(self.error_handler)
         self.assertEqual(self.script_errors,[])
     async def run_script(self,name,variables=None):
         from homeassistant.core import Context
@@ -317,16 +318,16 @@ class ButtonRuntimeTests(unittest.IsolatedAsyncioTestCase):
     async def test_native_scene_request_filter_and_manual_motion_gate(self):
         from homeassistant.core import Event,Context
         from homeassistant.helpers import condition,config_validation as cv
-        cfg=await cv.async_validate(self.hass,cv.CONDITION_SCHEMA,copy.deepcopy(NATIVE_SCENE['conditions'][0]))
+        cfg=await cv.async_validate(self.hass,cv.CONDITION_SCHEMA,copy.deepcopy(NATIVE_ROUTER['conditions'][0]))
         check=await condition.async_from_config(self.hass,cfg)
         try:
-            self.assertEqual(NATIVE_SCENE['triggers'][0]['event_type'],'call_service')
-            self.assertEqual(NATIVE_SCENE['triggers'][0]['event_data'],{'domain':'scene','service':'turn_on'})
+            self.assertEqual(NATIVE_ROUTER['triggers'][0]['event_type'],'call_service')
+            self.assertEqual(NATIVE_ROUTER['triggers'][0]['event_data'],{'domain':'scene','service':'turn_on'})
             self.hass.states.async_set('scene.safe','unknown',{'entity_id':[LIGHTS[0]]})
             self.hass.states.async_set('scene.unsafe','unknown',{'entity_id':['switch.plug']})
             for entities,expected in [('scene.safe',True),(['scene.safe'],True),([],False),
                                       ('scene.unsafe',False),(['scene.safe','scene.unsafe'],False)]:
-                event=Event('call_service',{'service_data':{'entity_id':entities}},context=Context(user_id='human'))
+                event=Event('call_service',{'domain':'scene','service_data':{'entity_id':entities}},context=Context(user_id='human'))
                 self.assertEqual(check.async_check(variables={'trigger':{'event':event}}),expected)
         finally:check.async_unload()
         for key,zone in ZONES.items():
@@ -368,13 +369,13 @@ class ButtonRuntimeTests(unittest.IsolatedAsyncioTestCase):
     async def test_native_human_light_controls_not_automatic_feedback(self):
         from homeassistant.core import Event,Context
         from homeassistant.helpers import condition,config_validation as cv
-        cfg=await cv.async_validate(self.hass,cv.CONDITION_SCHEMA,copy.deepcopy(NATIVE_LIGHT['conditions'][0]))
+        cfg=await cv.async_validate(self.hass,cv.CONDITION_SCHEMA,copy.deepcopy(NATIVE_ROUTER['conditions'][0]))
         check=await condition.async_from_config(self.hass,cfg)
         try:
             for user,parent,expected in [(None,None,False),('human','parent',False),('human',None,True)]:
                 event=Event('call_service',{'service_data':{'entity_id':LIGHTS[5]}},context=Context(user_id=user,parent_id=parent))
                 self.assertEqual(check.async_check(variables={'trigger':{'event':event}}),expected)
-                if expected:await self.run_sequence(NATIVE_LIGHT['actions'],{'trigger':{'event':event}})
+                if expected:await self.run_sequence(NATIVE_ROUTER['actions'],{'trigger':{'event':event}})
             self.assertEqual(self.hass.states.get(ZONES['bathroom']['manual']).state,'on')
             self.assertEqual(self.hass.states.get(ZONES['living_kitchen']['manual']).state,'off')
             self.assertFalse(any(c[0] in ['light','scene'] for c in self.calls))
@@ -420,7 +421,7 @@ class ButtonRuntimeTests(unittest.IsolatedAsyncioTestCase):
         for data in [{'area_id':area.id},{'label_id':[label.label_id]}]:
             self.hass.states.async_set(ZONES['living_kitchen']['manual'],'off');self.calls.clear()
             event=Event('call_service',{'service_data':data},context=Context(user_id='human'))
-            await self.run_sequence(NATIVE_LIGHT['actions'],{'trigger':{'event':event}})
+            await self.run_sequence(NATIVE_ROUTER['actions'],{'trigger':{'event':event}})
             self.assertEqual(self.hass.states.get(ZONES['living_kitchen']['manual']).state,'on')
             self.assertEqual(self.hass.states.get(ZONES['bathroom']['manual']).state,'off')
             self.assertFalse(any(c[0] in ['light','scene'] for c in self.calls))
@@ -492,11 +493,11 @@ class ButtonRuntimeTests(unittest.IsolatedAsyncioTestCase):
             self.hass.states.async_set(entity,'off',{'brightness':100,'color_mode':'color_temp','color_temp_kelvin':2702})
         for z in ZONES.values():self.hass.states.async_set(z['active'],'off')
         self.trigger_unsubs=[];self.trigger_checks=[]
-        for auto in MOTION_CONFIG['automation myggspray']+MOTION_CONFIG['automation bathroom ambient']+CONFIG['automation lighting all off expiry']+CONFIG['automation lighting mode']+[NATIVE_SCENE,NATIVE_LIGHT]:
+        for auto in MOTION_CONFIG['automation myggspray']+MOTION_CONFIG['automation bathroom ambient']+CONFIG['automation lighting all off expiry']+CONFIG['automation lighting mode']+[NATIVE_ROUTER]:
             cfg=await cv.async_validate(self.hass,PLATFORM_SCHEMA,copy.deepcopy(auto))
             checks=[await condition.async_from_config(self.hass,c) for c in cfg['conditions']]
             self.trigger_checks.extend(checks)
-            worker=Script(self.hass,cfg['actions'],cfg['alias'],'automation',script_mode='queued',max_runs=5)
+            worker=Script(self.hass,cfg['actions'],cfg['alias'],'automation',script_mode='queued',max_runs=cfg.get('max',10))
             self.scripts['auto_'+cfg['id']]=worker
             async def dispatch(variables,context=None,checks=checks,worker=worker):
                 if all(c.async_check(variables=variables) for c in checks):
@@ -544,7 +545,7 @@ class ButtonRuntimeTests(unittest.IsolatedAsyncioTestCase):
         # Manual Off at the calibrated background level must not be overridden.
         await self.run_script('room_lights_power',{'room':'living_kitchen','power':'off'})
         await self.hass.async_block_till_done()
-        self.assertEqual(self.hass.states.get(z['manual']).state,'on')
+        self.assertEqual(self.hass.states.get(z['offTimer']).state,'active')
         self.calls.clear();motion_time=self.hass.states.get(z['motion']).last_changed
         self.hass.states.async_set(z['illuminance'],'40')
         await self.hass.async_block_till_done()
@@ -609,14 +610,15 @@ class ButtonRuntimeTests(unittest.IsolatedAsyncioTestCase):
             await self.run_script('room_lights_power',{'room':key,'power':'off'})
             await self.hass.async_block_till_done()
             self.assertTrue(all(self.hass.states.is_state(e,'off') for e in ZONES[key]['lights']))
-            self.assertTrue(self.hass.states.is_state(ZONES[key]['mode'],'Manual'))
+            self.assertTrue(self.hass.states.is_state(ZONES[key]['mode'],'Automatic'))
+            self.assertTrue(self.hass.states.is_state(ZONES[key]['offTimer'],'active'))
             self.assertEqual(self.hass.states.get(ZONES[key]['motion']).last_changed,before)
         self.hass.states.async_set('switch.appliance','on')
         await self.run_script('bilresa_all_lights_off');await self.hass.async_block_till_done()
         for entity in LIGHTS:self.assertEqual(self.hass.states.get(entity).state,'off')
         for z in ZONES.values():
             self.assertEqual(self.hass.states.get(z['offHold']).state,'on')
-            self.assertEqual(self.hass.states.get(z['manual']).state,'off' if z==ZONES['bathroom'] else 'on')
+            self.assertEqual(self.hass.states.get(z['mode']).state,'Automatic')
             self.assertEqual(self.hass.states.get(z['active']).state,'off')
             self.assertEqual(self.hass.states.get(z['automation']).state,'on')
         self.assertEqual(self.hass.states.get('switch.appliance').state,'on')
@@ -625,6 +627,8 @@ class ButtonRuntimeTests(unittest.IsolatedAsyncioTestCase):
             if d=='light':self.assertTrue(set(data['entity_id'])<=set(LIGHTS))
     async def test_all_off_hold_blocks_every_motion_route_and_preserves_manual_controls(self):
         await self.setup_priority_runtime();await self.occupy_dark(*ZONES)
+        from homeassistant.core import callback
+        @callback
         def off_with_guard(call):
             for z in ZONES.values():
                 self.assertEqual(self.hass.states.get(z['offHold']).state,'on')
@@ -684,30 +688,19 @@ class ButtonRuntimeTests(unittest.IsolatedAsyncioTestCase):
                 await self.hass.async_block_till_done()
                 self.assertFalse(any(c[0]=='light' for c in self.calls))
 
-    async def test_native_timer_automatically_resumes_after_thirty_seconds(self):
-        import asyncio
+    async def test_native_timer_finish_reconciles_unchanged_occupancy(self):
         await self.setup_priority_runtime();await self.occupy_dark(*ZONES)
         motion_times={k:self.hass.states.get(z['motion']).last_changed for k,z in ZONES.items()}
         await self.run_script('bilresa_all_lights_off');await self.hass.async_block_till_done()
-        started=self.hass.loop.time();finished=asyncio.Event()
-        from homeassistant.core import callback
-        @callback
-        def observe(event):
-            if all(self.hass.states.is_state(z['offHold'],'off') for z in ZONES.values()):finished.set()
-        unsub=self.hass.bus.async_listen('state_changed',observe)
-        try:
-            for z in ZONES.values():
-                self.assertEqual(self.hass.states.get(z['offTimer']).state,'active')
-                self.assertTrue(all(self.hass.states.is_state(e,'off') for e in z['lights']))
-            await asyncio.wait_for(finished.wait(),35)
-            await self.hass.async_block_till_done()
-            elapsed=self.hass.loop.time()-started
-            self.assertGreater(elapsed,28);self.assertLess(elapsed,35)
-            for k,z in ZONES.items():
-                self.assert_priority_state(k)
-                self.assertEqual(self.hass.states.get(z['motion']).last_changed,motion_times[k])
-                self.assertEqual(self.hass.states.get(z['offTimer']).state,'idle')
-        finally:unsub()
+        for z in ZONES.values():
+            self.assertEqual(self.hass.states.get(z['offTimer']).attributes['duration'],'0:02:00')
+            self.assertTrue(all(self.hass.states.is_state(e,'off') for e in z['lights']))
+        await self.hass.services.async_call('timer','finish',{'entity_id':[z['offTimer'] for z in ZONES.values()]},blocking=True)
+        await self.hass.async_block_till_done()
+        for k,z in ZONES.items():
+            self.assert_priority_state(k)
+            self.assertEqual(self.hass.states.get(z['motion']).last_changed,motion_times[k])
+            self.assertEqual(self.hass.states.get(z['offTimer']).state,'idle')
 
     async def test_repeated_all_off_restarts_timer_and_stale_expiry_cannot_resume(self):
         from unittest.mock import patch
@@ -772,14 +765,15 @@ class ButtonRuntimeTests(unittest.IsolatedAsyncioTestCase):
             if task and not task.done():task.cancel()
             if task:await asyncio.gather(task,return_exceptions=True)
 
-    async def test_native_off_and_late_reports_respect_manual_mode(self):
+    async def test_native_off_cooldown_then_toggle_and_late_reports_respect_manual_mode(self):
         from homeassistant.core import Context
         await self.setup_priority_runtime();await self.occupy_dark('bathroom')
         for service in ['turn_off','toggle']:
             self.calls.clear()
             await self.hass.services.async_call('light',service,{'entity_id':LIGHTS[5]},blocking=True,context=Context(user_id='human'))
             await self.hass.async_block_till_done()
-            self.assertEqual(self.hass.states.get(ZONES['bathroom']['mode']).state,'Manual')
+            self.assertEqual(self.hass.states.get(ZONES['bathroom']['mode']).state,'Automatic' if service=='turn_off' else 'Manual')
+            self.assertEqual(self.hass.states.get(ZONES['bathroom']['offTimer']).state,'active')
             self.assertLess(len(self.calls),12)
         # A late native report must not cause an automatic corrective command.
         self.calls.clear();old=self.hass.states.get(LIGHTS[5]);self.hass.states.async_set(LIGHTS[5],'off',dict(old.attributes))
@@ -830,7 +824,7 @@ class ButtonRuntimeTests(unittest.IsolatedAsyncioTestCase):
             await self.hass.async_block_till_done()
             await self.run_script('room_lights_power',{'room':'bathroom','power':'off'});await self.hass.async_block_till_done()
             self.assertEqual(self.hass.states.get(LIGHTS[5]).state,'off',(motion,lux))
-            self.assertEqual(self.hass.states.get(z['manual']).state,'on')
+            self.assertEqual(self.hass.states.get(z['offTimer']).state,'active')
     async def test_slider_alone_powers_off_room_and_respects_priority(self):
         await self.setup_priority_runtime()
         from homeassistant.helpers.template import Template
@@ -845,7 +839,8 @@ class ButtonRuntimeTests(unittest.IsolatedAsyncioTestCase):
         await self.occupy_dark('bathroom')
         await self.run_sequence(slider['set_value'],{'value':0});await self.hass.async_block_till_done()
         self.assertEqual(Template(slider['state'],self.hass).async_render(),0)
-        self.assertEqual(self.hass.states.get(ZONES['bathroom']['mode']).state,'Manual')
+        self.assertEqual(self.hass.states.get(ZONES['bathroom']['mode']).state,'Automatic')
+        self.assertEqual(self.hass.states.get(ZONES['bathroom']['offTimer']).state,'active')
         await self.run_script('lighting_resume_automatic',{'room':'bathroom'});await self.hass.async_block_till_done()
         self.assert_priority_state('bathroom')
     async def test_bedroom_only_action_does_not_acquire_or_command_other_zones(self):
@@ -881,7 +876,7 @@ class ButtonRuntimeTests(unittest.IsolatedAsyncioTestCase):
             self.hass.states.async_set(ZONES['bathroom']['illuminance'],'unavailable')
             release.set();await asyncio.wait_for(task,5);await self.hass.async_block_till_done()
             self.assertEqual(self.hass.states.get(LIGHTS[5]).state,'off')
-            self.assertEqual(self.hass.states.get(ZONES['bathroom']['manual']).state,'on')
+            self.assertEqual(self.hass.states.get(ZONES['bathroom']['offTimer']).state,'active')
             self.assertEqual(self.hass.states.get(ZONES['bathroom']['active']).state,'off')
         finally:
             release.set()
@@ -891,6 +886,7 @@ class ButtonRuntimeTests(unittest.IsolatedAsyncioTestCase):
         await self.setup_priority_runtime();z=ZONES['bathroom']
         for lux,percent in [(x,self.bathroom_percent) for x in [0,4.99,5,49.99]]+[(50,None),(200,None)]:
             self.hass.states.async_set(z['motion'],'off')
+            await self.hass.services.async_call('timer','cancel',{'entity_id':z['offTimer']},blocking=True)
             self.hass.states.async_set(z['active'],'off')
             self.hass.states.async_set(z['mode'],'Automatic')
             self.bathroom_off_since();self.hass.states.async_set(z['illuminance'],str(lux),force_update=True)
@@ -909,7 +905,8 @@ class ButtonRuntimeTests(unittest.IsolatedAsyncioTestCase):
                 await self.run_script('room_lights_power',{'room':'bathroom','power':'off'})
                 await self.hass.async_block_till_done()
                 self.assertEqual(self.hass.states.get(LIGHTS[5]).state,'off')
-                self.assertEqual(self.hass.states.get(z['mode']).state,'Manual')
+                self.assertEqual(self.hass.states.get(z['mode']).state,'Automatic')
+                self.assertEqual(self.hass.states.get(z['offTimer']).state,'active')
     async def test_bathroom_clock_boundaries_change_owned_cycle_without_lux_or_motion_edge(self):
         from datetime import datetime,timezone
         from unittest.mock import patch

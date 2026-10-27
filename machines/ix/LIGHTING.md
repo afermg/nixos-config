@@ -23,7 +23,7 @@ Each remote uses this mapping:
 | Button | Short press | Double-click | Long press |
 | --- | --- | --- | --- |
 | Top | Group brighter (×1.25), enter Manual | Next ordered preset / Off | Toggle group's Automatic/Manual mode |
-| Bottom | Group dimmer (×0.8), enter Manual | Previous: reverse cycle | All six off; bathroom Auto after 5s, living/kitchen pause 30s |
+| Bottom | Group dimmer (×0.8), enter Manual | Previous: reverse cycle | All six off; both motion zones Auto after 2min |
 
 Commands never include smart-plug outlets, appliances or ix. Brightness changes
 only currently lit, available, dimmable bulbs and preserve white temperature.
@@ -41,29 +41,37 @@ Only fresh `multi_press_1`, `multi_press_2` and `long_press` state events are
 accepted. Initial, restored, stale, repeated-timestamp, unsupported multi-press
 and long-release events do not execute lighting commands.
 
-## Automatic / Manual mode and the separate All off pause
+## Automatic / Manual mode and the separate manual Off cooldown
 
 The independent settings are `input_select.lighting_mode_living_kitchen` and
 `input_select.lighting_mode_bathroom`, with **Automatic** and **Manual** options.
 New helpers default Automatic; existing selections restore across restarts.
 Bedroom has no motion automation and cannot change the bathroom's mode.
 
-A deliberate manual brightness adjustment (number slider, white-control level,
+A deliberate nonzero brightness adjustment (number slider, white-control level,
 native HA light control or BILRESA dimming) **automatically enters Manual** in
-only the affected motion zone. Manual power, white-temperature and scene commands
-also take manual ownership. Motion, vacancy recovery and midnight/07:00 profile
+only the affected motion zone. Manual On, white-temperature and scene commands
+also take persistent manual ownership. Explicit Off instead
+starts the temporary cooldown below. Motion, vacancy recovery and midnight/07:00 profile
 changes cannot change lamps in Manual. Selecting Manual itself leaves lamps alone.
 Return explicitly to Automatic using the mode setting or top-long on remote3/4;
 current occupancy/lux is then reevaluated without requiring a new motion edge.
 Bathroom's mode is separate, available in HA's helper settings.
 
-**All off rearms bathroom Automatic mode**, switches all six lamps off, and
-starts/restarts the bathroom's **5-second** pause and living/kitchen's **30-second**
-pause. Living/kitchen's mode is unchanged. The remote bottom-long, app All off
-script and native human `light.turn_off` targeting all six lamps use this same
-path. After five seconds bathroom occupancy/darkness is reevaluated, including
-motion already present; no new motion edge is required. Bright/empty rooms stay
-off. A later explicit manual command still wins and is not erased by expiry.
+**Explicit manual Off rearms Automatic behind a two-minute (120-second)
+cooldown in only the affected motion zones.** This includes room/group Off,
+the Off stage in preset cycling, slider zero and direct human `light.turn_off`
+for any allowlisted lamp. Another Off restarts the affected deadline. Bedroom
+has no motion zone. A partial living/kitchen Off pauses that whole motion zone
+but switches off only the requested lamps; it does not turn off other rooms.
+
+Global **All off** (remote bottom-long, app script or native all-six Off) uses
+this same path for both zones and switches all six lamps off. At expiry, current
+occupancy/darkness is reevaluated, including motion already present; no new motion
+edge is required. Empty/bright rooms stay off. Automatic vacancy shutoff, ambient
+changes and incidental OFF members of a mixed scene never start this cooldown.
+Later manual brightness, On, temperature, scene or explicit Manual selection
+still wins and is not erased by expiry. Such input does not extend/cancel a timer.
 Timers restore remaining time, including offline expiry. No automation is
 disabled and no blocking script delay is used.
 Changing mode does not cancel the timer; the compatibility service
@@ -75,6 +83,17 @@ service calls are distinguished from automated/child-context feedback. Absolute
 native brightness requests and native scene requests are reapplied inside that
 queue after selecting Manual, so an already in-flight automatic write cannot
 win. Automatic reports never select Manual. No sensor timestamps are fabricated.
+
+Native HA scenes can propagate the same human context to their lamp commands.
+One queued native event router records validated scene contexts before waiting
+on the shared lighting queue, so incidental scene Off remains Manual rather than
+starting a cooldown. Its process-local `input_text.lighting_native_scene_contexts`
+starts empty on HA startup; six full context IDs and a monotonic evicted-timestamp
+cutoff bound storage without forgetting delayed scene subcalls. Fresh independent
+Off still works after many scenes. Malformed/unknown contexts, or contexts at or
+before the cutoff (including same-millisecond ambiguity), conservatively remain
+Manual. This narrow edge case may require explicit Resume; no time window blindly
+suppresses all subsequent Off commands.
 
 In Automatic, the existing strict40lux living/kitchen and50lux bathroom rules,
 ambient validation, Matter rounding tolerance and owned vacancy shutoff remain.
@@ -116,7 +135,7 @@ not deleted. The number and white-control entities are not physical devices or
 allowlist members. There is no state-sync
 write loop; scenes, buttons and motion are reflected from actual lamp state.
 
-Moving a slider selects Manual, so automatic lighting cannot move it back.
+Moving a slider above zero selects Manual, so automatic lighting cannot move it back.
 Bathroom's **20% night / 80% day**,2700K profile applies only in Automatic mode.
 Off, unavailable and unlisted lamps are not included in proportional adjustments.
 
@@ -163,13 +182,13 @@ labels no longer control membership. Every preset must be available and wholly
 inside the selected group (including OFF members), otherwise cycling does nothing.
 All lamps off means the Off stage, even if a scene was previously activated.
 Otherwise the most recently activated preset determines the stage; without one,
-next starts at the first Mid preset and previous at the last High/Full preset. Off is a scoped manual command and
+next starts at the first Mid preset and previous at the last High/Full preset. Off is a scoped two-minute motion cooldown and
 cannot immediately be undone by motion. Scene settings remain editable.
 
 `script.bilresa_cycle_scenes` requires `room: bedroom` or `living_kitchen` and
 accepts `direction: next` (default) or `previous`. It never controls bathroom.
-Bottom long-press remains global All off, rearming bathroom Auto while preserving
-living/kitchen's mode.
+Bottom long-press remains global All off, rearming bathroom and living/kitchen
+Auto after two minutes.
 
 Only nonempty scenes containing individual allowlisted lamps qualify. Scenes
 with plugs, other entities, light groups or unavailable scene entities are
@@ -197,13 +216,13 @@ first. Bedroom controls never change living/kitchen or bathroom lamps.
 Unknown/group/appliance targets remain excluded.
 
 Manual white adjustments select Manual and are not overwritten by bathroom's
-scheduled profile. White controls do not cancel or extend an All off countdown
+scheduled profile. White controls do not cancel or extend a manual Off countdown
 and do not enable Party mode. A multicolour Party mode is not supported by
 these bulbs. No lamp commands are sent during installation.
 
 ## Automatic motion lighting
 
-Only in Automatic mode, with an idle All off timer, `motion-lighting.nix`
+Only in Automatic mode, with an idle manual Off timer, `motion-lighting.nix`
 uses the following rules:
 
 - Living/kitchen MYGGSPRAY: occupancy
@@ -266,7 +285,7 @@ across HA restarts. They do not independently turn lamps on. Restart establishes
 a fresh clear interval, possibly followed by up to one recovery-check minute.
 Non-priority manual control clears automatic ownership. Dark occupancy reclaims
 it immediately, even if the manual helper was restored on across a restart,
-**except when the separate All off hold is set**.
+**except when the separate manual Off hold is set**.
 
 ## Source and tests
 
@@ -284,7 +303,7 @@ IX_HA_DEPENDENCY_HELPER=~/.local/state/matter-time-sync/configure-energy.py \
 The matching HA runtime tests use disposable registries, real HA
 triggers/conditions/scripts and mocked lamp services. All off tests cover
 occupied motion, queued/in-flight commands, every motion entry route, real
-30-second expiry, countdown restart, stale expiry races, restored/expired timers,
+time-controlled two-minute expiry, countdown restart, stale expiry races, restored/expired timers,
 unknown timer state, manual On while paused, and all four remotes' scoped Resume.
 Coverage also includes motion-condition cases and ordinary manual/native Off reversal,
 late device reports, darkness/sensor recovery without new motion, in-flight
@@ -296,6 +315,52 @@ room-specific scene membership, scoped manual ownership/resume, native human-vs-
 automatic context filtering and brightness slider routing/readback. These are not
 physical-device tests. Generated HA automation/script/scene schemas were also
 validated before deployment; the live configuration check returns valid.
+
+## Manual Off cooldown checkpoint — 2026-10-27
+
+The two-minute rule above supersedes the five-second All off release below.
+Deployed from `79wldbqsyd6gnj0z4dbh22vxqqxccgr9` to
+`0fmx8hbiccvjsmjphkiw5hxyp56qfl44` using only supported input_text/timer/script/
+automation reloads after narrow Nix activation. HA and protected processes stayed
+running; SSH runtime files, scenes and existing registry identities were retained.
+The separate native scene observer is no longer loaded; its registry entry remains.
+The new queued native router handles both scene and direct-light events.
+
+Both loaded timers are120seconds. The newer living **Manual** and bathroom
+**Automatic** selections were preserved without Resume or other control commands.
+No physical Off, scene or synthetic motion tests were performed. Forty-four focused
+matching-HA tests passed, with HA/asyncio error capture; the existing synchronous
+test lamp handler was marked `@callback` to eliminate its thread-dispatch errors.
+The full emulated suite was not rerun.
+
+Rollback is GC-rooted on ix at
+`~/.local/state/ix-manual-off-20261027/rollback-system`.
+Private evidence and incremental source patch on Oppy:
+`~/.local/state/ix-motion-ssh-20261026-dqyLOw/manual-off-evidence/`.
+
+## Living motion reactivation checkpoint — 2026-10-26
+
+The living automation was already enabled and receiving real sensor events; its
+persistent **Manual** mode (since October15) blocked motion, not a failed sensor.
+All off now rearms both motion zones behind five-second pauses. Living retains
+its calibrated strict40lux gate, ten-minute vacancy and brightness/color
+preservation; it does not inherit bathroom's time-based brightness or50lux gate.
+Later manual commands still win, including across restarts.
+
+Deployed from the prior live baseline, not this checkout wholesale, to
+`79wldbqsyd6gnj0z4dbh22vxqqxccgr9`. Only HA's configuration reload trigger changed;
+HA and other service processes continued through supported timer/script/automation
+reloads. One authorized living-only Resume selected Automatic; bathroom's Manual
+mode was preserved. During the two-minute observation occupancy stayed clear,
+so this verifies reactivation/configuration, not a new physical motion/lamp cycle.
+No synthetic sensor events or test lamp commands were sent.
+
+Rollback system `pdl00yw574qxgl69dxf4vw6i4wbad2bs` is retained on ix under
+`~/.local/state/ix-living-reactivation-20261026/rollback-system`.
+Private deployment/test evidence on Oppy:
+`~/.local/state/ix-motion-ssh-20261026-dqyLOw/lighting-evidence/`.
+Focused mocked HA modes, motion conditions, timer restore and All off tests passed;
+the full emulated suite was incomplete, not a full-suite pass.
 
 ## Original expansion checkpoint — 2026-10-07
 

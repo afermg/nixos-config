@@ -16,7 +16,7 @@
       manual = "input_boolean.lighting_manual_living_kitchen";
       offHold = "input_boolean.lighting_all_off_hold_living_kitchen";
       offTimer = "timer.lighting_all_off_pause_living_kitchen";
-      offPauseSeconds = 30;
+      offPauseSeconds = 120;
       automation = "automation.myggspray_living_room_and_kitchen_when_dark";
       active = "input_boolean.myggspray_lighting_active";
       motion = "binary_sensor.myggspray_wrlss_mtn_sensor_occupancy";
@@ -38,7 +38,7 @@
       manual = "input_boolean.lighting_manual_bathroom";
       offHold = "input_boolean.lighting_all_off_hold_bathroom";
       offTimer = "timer.lighting_all_off_pause_bathroom";
-      offPauseSeconds = 5;
+      offPauseSeconds = 120;
       automation = "automation.myggspray_bathroom_night_light";
       active = "input_boolean.myggspray_bathroom_lighting_active";
       motion = "binary_sensor.myggspray_wrlss_mtn_sensor_occupancy_2";
