@@ -3715,6 +3715,95 @@ Very useful for interactive parsing
         magit-bury-buffer-function #'magit-mode-quit-window)
 
 #+end_src
+**** Forge
+Forge keeps issues and pull requests alongside Magit. After authenticating =gh=,
+set =git config --local github.user YOUR-LOGIN= once in each repository that
+needs an explicit account. Existing auth-source credentials take precedence;
+the fallback below uses only that account's GitHub CLI token, without saving it.
+
+In Magit, =@= opens Forge (upstream =N= and ='= still work). Use =@ / a= to
+track a repository, then =@ f f= to refresh topics. Use =@ l p= to list pull
+requests and =RET= to visit one (dismiss the list menu with =C-g= if needed).
+After fetching the PR's Git refs, =d d= in its topic buffer shows the diff.
+For inline review, select a PR in the list or visit its topic and use =@ r r=.
+This opens =pr-review= without asking for a URL or posting anything. In its
+review buffer, =C-c C-c= adds a comment for the current context; =C-c C-s=
+explicitly invokes review actions. In the input buffer, =C-c C-c= confirms
+and =C-c C-k= aborts. Opening a review never submits it automatically.
+#+NAME: forge
+#+BEGIN_SRC emacs-lisp
+  (use-package forge
+    :straight t
+    :after magit
+    :config
+    ;; Keep the familiar entry points across upstream key/menu changes.
+    (keymap-set magit-mode-map "@" #'forge-dispatch)
+    (unless (ignore-errors (transient-get-suffix 'forge-dispatch "l p"))
+      (transient-append-suffix 'forge-dispatch "l t"
+        '("l p" "pull-requests" forge-list-pullreqs)))
+
+    (defun afm/forge-pr-review ()
+      "Open the selected or visited Forge pull request for inline review."
+      (interactive)
+      (let ((topic (forge-current-topic)))
+        (unless (and topic (forge-pullreq-p topic))
+          (user-error "Select or visit a Forge pull request first"))
+        (pr-review (forge-get-url topic))))
+
+    (unless (ignore-errors (transient-get-suffix 'forge-dispatch "r r"))
+      (transient-append-suffix 'forge-dispatch "v p"
+        '("r r" "inline review" afm/forge-pr-review)))
+
+    (with-eval-after-load 'meow
+      (dolist (entry '((forge-topic-mode           . insert)
+                       (forge-topics-mode          . insert)
+                       (forge-pullreq-mode         . insert)
+                       (forge-issue-mode           . insert)
+                       (forge-discussion-mode      . insert)
+                       (forge-notifications-mode   . insert)
+                       (forge-repository-list-mode . insert)))
+        (add-to-list 'meow-mode-state-list entry)))
+
+    ;; ghub's private token seam is pinned and covered by focused batch tests.
+    (defun afm/forge-ghub-token-from-gh (orig host username package
+                                            &optional nocreate forge)
+      "Use account-specific gh credentials for Forge and PR Review on GitHub."
+      (if (not (and (equal host "api.github.com")
+                    (memq package '(forge emacs-pr-review))
+                    (memq forge '(nil github))
+                    (stringp username)))
+          (funcall orig host username package nocreate forge)
+        (or (funcall orig host username package t forge)
+            (when-let ((gh (executable-find "gh")))
+              (condition-case nil
+                  (with-temp-buffer
+                    (when (eq 0 (call-process gh nil '(t nil) nil
+                                              "auth" "token"
+                                              "--hostname" "github.com"
+                                              "--user" username))
+                      (let ((token (string-trim (buffer-string))))
+                        (unless (string-empty-p token) token))))
+                (error nil)))
+            (funcall orig host username package nocreate forge))))
+
+    (advice-add 'ghub--token :around #'afm/forge-ghub-token-from-gh))
+#+END_SRC
+
+#+NAME: pr-review
+#+BEGIN_SRC emacs-lisp
+  (use-package pr-review
+    :straight (:host github :repo "blahgeek/emacs-pr-review")
+    :commands (pr-review)
+    :custom
+    ;; Avoid costly source syntax highlighting; keep diff colors and inline review.
+    (pr-review-diff-font-lock-syntax nil)
+    :init
+    (with-eval-after-load 'meow
+      (dolist (entry '((pr-review-mode       . insert)
+                       (pr-review-input-mode . insert)))
+        (add-to-list 'meow-mode-state-list entry))))
+#+END_SRC
+
 **** COMMENT Timemachine
 When in a file, go back in commit history. Consider replacing it with my own code
 #+NAME: git-timemachine
