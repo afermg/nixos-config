@@ -138,6 +138,7 @@
           outputs.homeModules.amunoz
           outputs.homeModules.pi-msg
           ./modules/shared/config/hindsight/server.nix
+          ./homes/amunoz/oppy-ssh.nix
         ];
 
         services.hindsightServer.enable = true;

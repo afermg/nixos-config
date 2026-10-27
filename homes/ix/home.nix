@@ -12,6 +12,7 @@
     ../../modules/shared/config/email/rbw.nix
     ../../modules/shared/config/pi-msg/pi-msg.nix
     ./applications.nix
+    ./ssh.nix
   ];
   home = {
     username = "amunoz";

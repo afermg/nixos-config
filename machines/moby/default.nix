@@ -229,6 +229,7 @@
     ];
     openssh.authorizedKeys.keyFiles = [
       ../../homes/amunoz/id_ed25519.pub
+      ../../homes/ix/id_ed25519_ix_hosts.pub
     ];
   };
 

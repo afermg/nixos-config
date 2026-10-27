@@ -197,6 +197,9 @@ in
     shell = pkgs.fish;
     openssh.authorizedKeys.keyFiles = [
       ../../homes/amunoz/id_ed25519.pub
+    ]
+    ++ lib.optionals (user == "alan") [
+      ../../homes/ix/id_ed25519_ix_hosts.pub
     ];
   };
   system.primaryUser = "${user}";
