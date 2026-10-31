@@ -7,4 +7,7 @@
 
   home.file.".pi/agent/model-allowlist.ts".source = config.lib.file.mkOutOfStoreSymlink
     "${config.home.homeDirectory}/.local/share/src/nixos-config/modules/shared/config/pi/model-allowlist.ts";
+
+  home.file.".pi/agent/reliable-compaction.ts".source = config.lib.file.mkOutOfStoreSymlink
+    "${config.home.homeDirectory}/.local/share/src/nixos-config/modules/shared/config/pi/reliable-compaction.ts";
 }

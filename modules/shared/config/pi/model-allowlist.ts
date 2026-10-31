@@ -50,17 +50,41 @@ export default function (pi: ExtensionAPI) {
         },
       },
       {
-        id: "gpt-5.5",
-        name: "GPT-5.5",
+        id: "gpt-5.6-sol",
+        name: "GPT-5.6 Sol (872k)",
         reasoning: true,
         thinkingLevelMap: {
           minimal: "low",
           xhigh: "xhigh",
+          max: "max",
         },
         input: ["text", "image"],
-        cost: { input: 5, output: 30, cacheRead: 0.5, cacheWrite: 0 },
-        contextWindow: 272000,
+        // Pi 0.87.1 catalog pricing, including the long-context tier.
+        cost: {
+          input: 4,
+          output: 20,
+          cacheRead: 0.4,
+          cacheWrite: 5,
+          tiers: [
+            {
+              inputTokensAbove: 272000,
+              input: 8,
+              output: 30,
+              cacheRead: 0.8,
+              cacheWrite: 10,
+            },
+          ],
+        },
+        // Account's live Codex catalog: max_context_window=872000 (2026-10-30).
+        // A Pi SDK request with 300052 input tokens succeeded; see README.md.
+        contextWindow: 872000,
         maxTokens: 128000,
+        compat: {
+          supportsOpenAIGrammarTools: true,
+          supportsAdditionalTools: true,
+          supportsToolSearch: true,
+          supportsMidConvoSystemMessages: true,
+        },
       },
     ],
   });
