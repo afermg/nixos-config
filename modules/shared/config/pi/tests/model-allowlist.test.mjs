@@ -19,19 +19,24 @@ test("Sol is the default, Astra is retained, and GPT-5.5 is removed", () => {
   assert.equal(provider, "openai-codex");
   assert.equal(config.api, "openai-codex-responses");
   assert.equal(config.baseUrl, "https://chatgpt.com/backend-api");
-  assert.equal(settings.defaultModel, "gpt-5.6-sol");
-  assert.deepEqual(settings.enabledModels, ["openai-codex/gpt-5.6-sol", "openai-codex/gpt-6-astra"]);
+  assert.equal(settings.defaultModel, "gpt-6.1-sol");
+  assert.deepEqual(settings.enabledModels, ["openai-codex/gpt-6.1-sol", "openai-codex/gpt-6-astra"]);
   const models = new Map(config.models.map(m => [m.id, m]));
   assert.equal(models.size, config.models.length);
   assert.equal(models.size, 2);
   assert.equal(models.has("gpt-5.5"), false);
+  assert.equal(models.has("gpt-5.6-sol"), false);
   assert.equal(models.get("gpt-6-astra").contextWindow, 272000);
-  const sol = models.get("gpt-5.6-sol");
-  assert.equal(sol.contextWindow, 872000);
+  const sol = models.get("gpt-6.1-sol");
+  assert.equal(sol.contextWindow, 500000);
   assert.equal(sol.maxTokens, 128000);
+  assert.equal(sol.cost.input, 2);
+  assert.equal(sol.cost.output, 10);
+  assert.equal(sol.cost.cacheRead, 0.1);
+  assert.equal(sol.cost.cacheWrite, 2.5);
   assert.equal(sol.thinkingLevelMap.max, "max");
   assert.deepEqual(sol.cost.tiers, [{
-    inputTokensAbove: 272000, input: 8, output: 30, cacheRead: 0.8, cacheWrite: 10,
+    inputTokensAbove: 272000, input: 4, output: 15, cacheRead: 0.2, cacheWrite: 5,
   }]);
   for (const id of models.keys()) assert.ok(settings.enabledModels.includes(`${provider}/${id}`));
   assert.notEqual(settings.compaction?.enabled, false);
@@ -48,6 +53,7 @@ test("installed Pi runtime accepts the provider configuration", async () => {
   });
   runtime.registerProvider(provider, config);
   assert.equal(runtime.getError(), undefined);
-  assert.equal(runtime.getModel(provider, "gpt-5.6-sol").contextWindow, 872000);
+  assert.equal(runtime.getModel(provider, "gpt-6.1-sol").contextWindow, 500000);
   assert.equal(runtime.getModel(provider, "gpt-5.5"), undefined);
+  assert.equal(runtime.getModel(provider, "gpt-5.6-sol"), undefined);
 });

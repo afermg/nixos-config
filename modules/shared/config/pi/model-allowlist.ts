@@ -50,8 +50,8 @@ export default function (pi: ExtensionAPI) {
         },
       },
       {
-        id: "gpt-5.6-sol",
-        name: "GPT-5.6 Sol (872k)",
+        id: "gpt-6.1-sol",
+        name: "GPT-6.1 Sol (500k)",
         reasoning: true,
         thinkingLevelMap: {
           minimal: "low",
@@ -59,25 +59,26 @@ export default function (pi: ExtensionAPI) {
           max: "max",
         },
         input: ["text", "image"],
-        // Pi 0.87.1 catalog pricing, including the long-context tier.
+        // Published API-equivalent pricing, not a subscription billing estimate.
+        // https://developers.openai.com/api/docs/models/gpt-6.1-sol
         cost: {
-          input: 4,
-          output: 20,
-          cacheRead: 0.4,
-          cacheWrite: 5,
+          input: 2,
+          output: 10,
+          cacheRead: 0.1,
+          cacheWrite: 2.5,
           tiers: [
             {
               inputTokensAbove: 272000,
-              input: 8,
-              output: 30,
-              cacheRead: 0.8,
-              cacheWrite: 10,
+              input: 4,
+              output: 15,
+              cacheRead: 0.2,
+              cacheWrite: 5,
             },
           ],
         },
-        // Account's live Codex catalog: max_context_window=872000 (2026-10-30).
-        // A Pi SDK request with 300052 input tokens succeeded; see README.md.
-        contextWindow: 872000,
+        // Documented Codex context is 500k (not the API's 1.05M limit).
+        // Explicit gpt-6.1-sol request succeeded with this account; see README.md.
+        contextWindow: 500000,
         maxTokens: 128000,
         compat: {
           supportsOpenAIGrammarTools: true,

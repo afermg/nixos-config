@@ -4,25 +4,26 @@ Imported by `homes/amunoz/home.nix`; settings and extensions are linked into
 `~/.pi/agent/`. Run `/reload` in an **idle** session after changing them. Do not
 reload or restart healthy sessions that are executing tools.
 
-## Larger GPT context window
+## GPT-6.1 Sol default
 
-**GPT-5.6 Sol (872k)** is the default for new sessions. The model allowlist and
-cycling list contain only Sol and **GPT-6 Astra (272k)**; GPT-5.5 is removed.
-Existing sessions retain their model until `/reload` followed by
-`/model openai-codex/gpt-5.6-sol`. Astra's larger limit was not verified.
+**GPT-6.1 Sol (500k)** is the default for new sessions. The model allowlist and
+cycling list contain only Sol 6.1 and **GPT-6 Astra (272k)**. GPT-5.5 and
+GPT-5.6 Sol are removed. Existing sessions retain their model and cycling scope:
+reload while idle, update `/scoped-models` to these two models, then select
+`/model openai-codex/gpt-6.1-sol`. Do not interrupt active sessions.
 
-On 2026-10-30, the account-authenticated Codex model catalog
-(`https://chatgpt.com/backend-api/codex/models?client_version=0.146.0`) reported
-`context_window: 272000` and `max_context_window: 872000` for `gpt-5.6-sol`.
-A single direct Pi SDK request via the existing Codex OAuth credentials and SSE
-successfully processed **300,052 input tokens**, returning `CONTEXT_OK` (7 output
-tokens). The synthetic probe included no repository content or session history.
-This verifies operation above 272k, not a full 872k boundary stress test.
+OpenAI documents [500k context for Codex](https://developers.openai.com/codex/models)
+and [1.05M for the API](https://developers.openai.com/api/docs/models/gpt-6.1-sol).
+Use the Codex value here, rather than copying the previous model's 872k limit.
+The account's catalog queried as Codex 0.146.0 still lists older models, but a
+direct Pi SDK request for `gpt-6.1-sol` with existing OAuth credentials succeeded
+(returned `OK`, 20 input tokens, 5 output tokens). This is an availability test,
+not a full-context stress test or independent proof of backend model identity.
 
-The long-context pricing tier is retained from Pi's bundled catalog; larger
-requests can consume more subscription quota. Automatic compaction stays enabled
-with the existing settings (default threshold: 872000 - 16384 = 855616 tokens).
-No other sessions are restarted or switched automatically.
+Cost metadata follows the published API rates and long-context tier. These are
+API-equivalent estimates: the docs say subscription usage has no long-context
+surcharge. Automatic compaction stays enabled; the default threshold is
+500000 - 16384 = 483616 tokens. Existing histories above that need compaction.
 
 Run the offline registration and compaction checks with:
 
