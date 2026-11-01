@@ -32,6 +32,45 @@ PI_PACKAGE_DIR="$(dirname "$(readlink -f "$(command -v pi)")")/../lib/node_modul
   node --test modules/shared/config/pi/tests/*.test.mjs
 ```
 
+## Persistence and rollout boundaries
+
+`pi.nix` uses out-of-store symlinks into each user's
+`~/.local/share/src/nixos-config/modules/shared/config/pi/` checkout. Pushing
+commits does not update that checkout on Moby or either MacBook. Each machine
+needs the matching checkout; first-time installation also needs Home Manager
+activation. A successful Nix evaluation does not establish remote activation.
+
+The Neusis user-only override instead installs store-backed copies. Those
+settings are read-only: session-only model selection works, but Pi commands
+that save settings cannot write through that link. Make persistent changes in
+Nix. No automatic migration to writable files is performed by this review.
+
+Saved sessions and project-level settings can override the global startup
+default. Neither changing these files nor `/reload` alone replaces an existing
+in-memory cycling scope. Do not promise that all running sessions changed.
+
+## Pinned-SDK regression matrix
+
+The 2026-11-01 review evaluated Neusis's Oppy profile at Pi **0.80.10** and
+the personal Moby profile at **0.85.1**; the running shell used **0.87.1**.
+The original 12-test suite failed four tests on 0.80.10, including persistence
+of truncated summaries. The hook now validates stop reasons itself, explicitly
+disables summary caching, and supplies usage accounting when older SDKs omit it.
+The credential-store test fixture now implements the real `read`/`modify` API.
+
+All 15 tests pass on each of those SDK versions for both repository copies.
+Use `PI_PACKAGE_DIR` to select the actual host-pinned SDK rather than assuming
+the shell's `pi` is representative. To test the Neusis copy with this suite:
+
+```bash
+PI_PACKAGE_DIR=/path/to/pi/lib/node_modules/pi-monorepo \
+PI_CONFIG_DIR=/path/to/neusis/homes/amunoz/configs/pi \
+  node --test modules/shared/config/pi/tests/*.test.mjs
+```
+
+This is offline compatibility evidence, not a live 500k-context or remote
+deployment test. Model IDs and shared defaults are unchanged by the review.
+
 ## Reliable Codex compaction
 
 `reliable-compaction.ts` works around Pi 0.87.1 summary failures seen on

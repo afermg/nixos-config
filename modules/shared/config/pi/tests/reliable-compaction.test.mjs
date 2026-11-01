@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
 // Use the installed Pi's SDK so these tests also catch API drift on upgrades.
@@ -13,7 +14,9 @@ const jiti = createJiti(import.meta.url, {
     ? join(process.env.PI_PACKAGE_DIR, "dist/index.js")
     : import.meta.resolve("@earendil-works/pi-coding-agent") },
 });
-const { default: extension } = await jiti.import("../reliable-compaction.ts");
+const configDir = process.env.PI_CONFIG_DIR
+  ? resolve(process.env.PI_CONFIG_DIR) : fileURLToPath(new URL("..", import.meta.url));
+const { default: extension } = await jiti.import(join(configDir, "reliable-compaction.ts"));
 
 function fixture(overrides = {}) {
   let handler;
@@ -21,7 +24,7 @@ function fixture(overrides = {}) {
   const controller = new AbortController();
   const calls = [], notices = [];
   const usage = { input: 100, output: 30, cacheRead: 0, cacheWrite: 0, totalTokens: 130,
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
+    cost: { input: 0.1, output: 0.2, cacheRead: 0, cacheWrite: 0, total: 0.3 } };
   const model = { id: "gpt-6-astra", provider: "openai-codex", api: "openai-codex-responses", reasoning: true, maxTokens: 128000 };
   const event = {
     preparation: {
@@ -39,6 +42,7 @@ function fixture(overrides = {}) {
     modelRegistry: { async streamSimple(requestModel, context, options) {
       calls.push({ model: requestModel, context, options });
       if (overrides.reject) throw new Error(overrides.reject);
+      if (overrides.failCall === calls.length) throw new Error("Second summary failed");
       return { async result() { return { role: "assistant", content: [{ type: "text", text: "## Goal\nFix the bug, without deploying." }], stopReason: "stop", usage, ...overrides.response }; } };
     } },
   };
@@ -74,12 +78,31 @@ test("split turns keep both summaries and cumulative file metadata", async () =>
   assert.deepEqual(result.compaction.details.readFiles, ["previous.ts", "read.ts"]);
   assert.deepEqual(result.compaction.details.modifiedFiles, ["new.ts", "old-change.ts"]);
   assert.equal(result.compaction.usage.totalTokens, 260);
+  assert.equal(result.compaction.usage.input, 200);
+  assert.equal(result.compaction.usage.cost.input, 0.2);
+  assert.equal(result.compaction.usage.cost.output, 0.4);
+  assert.equal(result.compaction.usage.cost.total, 0.6);
+  assert.equal(f.usage.input, 100, "aggregation must not mutate provider usage");
+  assert.equal(f.usage.cost.total, 0.3, "aggregation must not mutate provider cost");
+});
+
+test("a failed second summary never persists the successful first half", async () => {
+  const f = fixture({ failCall: 2 });
+  f.event.preparation.isSplitTurn = true;
+  f.event.preparation.turnPrefixMessages = [{ role: "user", content: "Next stage", timestamp: 2 }];
+  assert.deepEqual(await f.run(), { cancel: true });
+  assert.equal(f.calls.length, 2);
 });
 
 for (const [name, overrides] of [
   ["transport error", { response: { stopReason: "error", errorMessage: "WebSocket idle timeout" } }],
   ["provider safety rejection", { response: { stopReason: "error", errorMessage: "Content flagged for possible biological risk" } }],
   ["token cap", { response: { stopReason: "length" } }],
+  ["aborted response", { response: { stopReason: "aborted" } }],
+  ["text mixed with a tool call", { response: { content: [
+    { type: "text", text: "A partial summary" },
+    { type: "toolCall", name: "bash", arguments: {} },
+  ] } }],
   ["empty result", { response: { content: [] } }],
   ["tool call", { response: { content: [{ type: "toolCall", name: "bash", arguments: {} }] } }],
   ["thrown exception", { reject: "Network failure" }],

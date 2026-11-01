@@ -1,16 +1,18 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { test } from "node:test";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const require = createRequire(process.env.PI_PACKAGE_DIR
   ? join(process.env.PI_PACKAGE_DIR, "package.json") : import.meta.url);
 const { createJiti } = require("jiti");
 const jiti = createJiti(import.meta.url);
-const { default: extension } = await jiti.import("../model-allowlist.ts");
-const settings = JSON.parse(await readFile(new URL("../settings.json", import.meta.url), "utf8"));
+const configDir = process.env.PI_CONFIG_DIR
+  ? resolve(process.env.PI_CONFIG_DIR) : fileURLToPath(new URL("..", import.meta.url));
+const { default: extension } = await jiti.import(join(configDir, "model-allowlist.ts"));
+const settings = JSON.parse(await readFile(join(configDir, "settings.json"), "utf8"));
 let provider, config;
 extension({ registerProvider(id, value) { provider = id; config = value; } });
 
@@ -48,7 +50,7 @@ test("installed Pi runtime accepts the provider configuration", async () => {
     : "@earendil-works/pi-coding-agent";
   const { ModelRuntime } = await import(sdk);
   const runtime = await ModelRuntime.create({
-    credentials: { get: async () => undefined, set: async () => {}, delete: async () => {}, list: async () => [] },
+    credentials: { read: async () => undefined, modify: async () => undefined, delete: async () => {}, list: async () => [] },
     modelsPath: null, refreshOnCreate: false, allowModelNetwork: false,
   });
   runtime.registerProvider(provider, config);

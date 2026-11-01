@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+import type { Usage } from "@earendil-works/pi-ai";
 import { compact, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 /**
@@ -30,6 +32,9 @@ export default function (pi: ExtensionAPI) {
       }
     }
 
+    // Pi 0.80.10's compact() does not return usage; capture it at the stream
+    // boundary. Newer SDKs already aggregate it, so use this only as a fallback.
+    let summaryUsage: Usage | undefined;
     const deadline = new AbortController();
     const timer = setTimeout(() => deadline.abort(), 600_000);
     const summarySignal = AbortSignal.any([signal, deadline.signal]);
@@ -47,14 +52,34 @@ export default function (pi: ExtensionAPI) {
           const stream = await ctx.modelRegistry.streamSimple(model, context, {
             ...options,
             transport: "sse",
+            cacheRetention: "none",
+            sessionId: options?.sessionId ?? randomUUID(),
             timeoutMs: 300_000,
             maxRetries: 0,
           });
           const getResult = stream.result.bind(stream);
           stream.result = async () => {
             const response = await getResult();
-            if (response.stopReason === "stop" && !response.content.some((block) => block.type === "text" && block.text.trim())) {
+            // Older compact() accepts length/aborted responses. Enforce the
+            // complete-text-only contract here, independently of SDK version.
+            if (response.stopReason !== "stop" || response.content.some((block) => block.type === "toolCall")) {
+              throw new Error(response.errorMessage || `Incomplete summary: ${response.stopReason}`);
+            }
+            if (!response.content.some((block) => block.type === "text" && block.text.trim())) {
               throw new Error("Summary was empty");
+            }
+            if (!summaryUsage) {
+              summaryUsage = structuredClone(response.usage);
+            } else {
+              for (const key of ["input", "output", "cacheRead", "cacheWrite", "totalTokens"] as const) {
+                summaryUsage[key] += response.usage[key];
+              }
+              if (response.usage.reasoning !== undefined) {
+                summaryUsage.reasoning = (summaryUsage.reasoning ?? 0) + response.usage.reasoning;
+              }
+              for (const key of ["input", "output", "cacheRead", "cacheWrite", "total"] as const) {
+                summaryUsage.cost[key] += response.usage.cost[key];
+              }
             }
             return response;
           };
@@ -69,6 +94,7 @@ export default function (pi: ExtensionAPI) {
       return {
         compaction: {
           ...result,
+          usage: result.usage ?? summaryUsage,
           details: { ...result.details, reliableCompaction: 1 },
         },
       };
