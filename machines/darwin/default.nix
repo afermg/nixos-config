@@ -66,6 +66,12 @@ in
     tailscale.enable = true; # Network of devices
   };
 
+  # tailscaled now owns /etc/resolver entries. The pinned nix-darwin module
+  # otherwise links ts.net through /etc/static into the Nix store; Tailscale's
+  # directory-scoped file access rejects that link: "path escapes from parent".
+  # Keep the daemon enabled, but do not recreate its resolver as a Nix symlink.
+  environment.etc."resolver/ts.net".enable = false;
+
   # Setup user, packages, programs
   nix = {
     settings.trusted-users = [
