@@ -15,7 +15,7 @@ let
   home_parent = if pkgs.stdenv.hostPlatform.isLinux then "home" else "Users";
   atuin_daemon_p = if pkgs.stdenv.hostPlatform.isLinux then true else false;
   personalPkgs = amunozInputs.nixpkgs.legacyPackages.${pkgs.stdenv.hostPlatform.system};
-  personalAtuin = personalPkgs.atuin;
+  personalAtuin = config.programs.atuin.package;
   personalPiCodingAgent = personalPkgs.pi-coding-agent;
 in
 {
@@ -124,6 +124,8 @@ in
   };
 
   imports = [
+    { _module.args.atuinThreadsInputs = amunozInputs; }
+    ../../modules/shared/config/atuin/threads.nix
     ../../modules/shared/config/fish/fish.nix
     ../../modules/shared/config/emacs/emacs-service.nix
     ../../modules/shared/config/opencode/opencode.nix
@@ -137,12 +139,16 @@ in
     ../../modules/shared/config/harper/harper.nix
   ];
 
+  # Install Threads support, but keep conversation sync a separate opt-in.
+  # See docs/atuin-threads.md before enabling capture or tool payloads.
+  programs.atuinThreads.enable = true;
+
   programs.atuin = {
     enable = true;
-    package = personalAtuin;
+    package = pkgs.lib.mkDefault personalPkgs.atuin;
     enableFishIntegration = true;
     enableZshIntegration = true;
-    daemon.enable = atuin_daemon_p;
+    daemon.enable = pkgs.lib.mkDefault atuin_daemon_p;
     flags = [ "--disable-up-arrow" ];
     settings = {
       auto_sync = true;

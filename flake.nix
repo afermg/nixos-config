@@ -5,6 +5,8 @@
     # Nixpkgs
     nixpkgs-stable.url = "github:nixos/nixpkgs/nixos-25.05";
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+    # Upgrade Atuin independently: Threads requires 18.24+, without moving the fleet pin.
+    nixpkgs-atuin.url = "github:nixos/nixpkgs/nixos-unstable";
 
     # darwin inputs
     darwin = {
@@ -117,6 +119,11 @@
             outputs.overlays.claude-code
           ];
         };
+      };
+
+      homeModules.atuin-threads = {
+        _module.args.atuinThreadsInputs = inputs;
+        imports = [ ./modules/shared/config/atuin/threads.nix ];
       };
 
       # Reusable host-specific Pi/XMPP bridge. Consumers configure the domain,

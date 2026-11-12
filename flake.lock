@@ -320,6 +320,22 @@
         "type": "github"
       }
     },
+    "nixpkgs-atuin": {
+      "locked": {
+        "lastModified": 1794386569,
+        "narHash": "sha256-x9sADJvoVG0L6RejZB+/BB4YiGZFBZrfTlhF4uBq1tQ=",
+        "owner": "nixos",
+        "repo": "nixpkgs",
+        "rev": "d4f25a3e562008648d45bcf2d70bcc7422cad84e",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nixos",
+        "ref": "nixos-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
     "nixpkgs-stable": {
       "locked": {
         "lastModified": 1789654592,
@@ -413,6 +429,7 @@
         "marimohub-nix": "marimohub-nix",
         "nix-homebrew": "nix-homebrew",
         "nixpkgs": "nixpkgs_4",
+        "nixpkgs-atuin": "nixpkgs-atuin",
         "nixpkgs-stable": "nixpkgs-stable_2",
         "systems": "systems_4"
       }
