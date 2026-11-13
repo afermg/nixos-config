@@ -1,9 +1,11 @@
 # Atuin Threads with T3
 
 Atuin Threads indexes native agent transcripts; it does not sync T3's database.
-This profile installs Atuin 18.24.6 and an `atuin-mcp` launcher, with **conversation
+This profile installs Atuin 18.24.8 and an `atuin-mcp` launcher, with **conversation
 capture and tool-payload capture off by default**. The separate `nixpkgs-atuin`
-input leaves the fleet's main nixpkgs pin unchanged.
+input leaves the fleet's main nixpkgs pin unchanged. It currently pins the upstream
+nixpkgs commit introducing 18.24.8, ahead of the unstable channels; update that
+isolated pin when adopting a newer Atuin release.
 
 ## Enable capture deliberately
 
@@ -174,5 +176,5 @@ tool discovery without reading real history. Live T3 discovery and cross-machine
 sync need the explicit opt-in/login steps above and are not automated tests.
 
 References: [announcement](https://blog.atuin.sh/threads-agent-sessions/),
-[Atuin Threads settings](https://github.com/atuinsh/atuin/blob/v18.24.6/crates/atuin-client/src/settings/threads.rs),
-[MCP registration](https://github.com/atuinsh/atuin/blob/v18.24.6/crates/atuin-common/src/harnesstools/mcp.rs).
+[Atuin Threads settings](https://github.com/atuinsh/atuin/blob/v18.24.8/crates/atuin-client/src/settings/threads.rs),
+[MCP registration](https://github.com/atuinsh/atuin/blob/v18.24.8/crates/atuin-common/src/harnesstools/mcp.rs).

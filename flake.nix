@@ -6,7 +6,8 @@
     nixpkgs-stable.url = "github:nixos/nixpkgs/nixos-25.05";
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     # Upgrade Atuin independently: Threads requires 18.24+, without moving the fleet pin.
-    nixpkgs-atuin.url = "github:nixos/nixpkgs/nixos-unstable";
+    # Atuin 18.24.8 has landed in nixpkgs, ahead of the unstable channels.
+    nixpkgs-atuin.url = "github:nixos/nixpkgs/103ab010c78eba0117a5ab6ad392887bdb4b653e";
 
     # darwin inputs
     darwin = {
