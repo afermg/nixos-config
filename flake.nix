@@ -275,6 +275,8 @@
               {
                 hindsightBackupSyncthing.enable = true;
                 ixBackupMesh.deviceName = "spirit";
+                age.identityPaths = [ "/home/amunoz/.config/agenix/spirit.agekey" ];
+                age.secrets.atuin.file = lib.mkForce ./secrets/atuin-spirit.age;
               }
             ];
           };

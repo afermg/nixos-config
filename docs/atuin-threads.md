@@ -35,8 +35,12 @@ Other Home Manager consumers can import
 - `captureTools = true` additionally retains tool arguments/results (including
   file contents). Atuin applies redaction, but it is not a guarantee that every
   secret is removed. Leave this off unless those payloads are appropriate to keep.
-- No login, historical import, provider registration, or activation is performed
-  by this PR. The existing agenix key and Atuin login are reused.
+- No login, historical import, or provider registration is performed
+  automatically by this module. Existing Atuin account credentials are reused.
+  Spirit uses its existing local agenix identity and `secrets/atuin-spirit.age`,
+  which encrypts the same sync key as the other servers (not a separate account
+  key). Never replace an old, different key before preserving/reconciling its
+  locally encrypted records.
 - Capture enables the Home Manager daemon on Linux and Darwin. Startup guards
   refuse to start without the encryption key; Linux retains the personal profile's
   existing agenix ordering, and Darwin waits for the key before starting.

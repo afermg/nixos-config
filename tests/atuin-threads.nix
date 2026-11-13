@@ -86,6 +86,12 @@ let
     ];
     rejectsForcedOldPackage = !(builtins.tryEval forcedOld).success;
     requiresAtuin = !(builtins.tryEval noAtuin).success;
+    spiritUsesLocalIdentity =
+      let
+        c = flake.homeConfigurations."amunoz@spirit".config;
+      in
+      builtins.elem "/home/amunoz/.config/agenix/spirit.agekey" c.age.identityPaths
+      && lib.hasSuffix "/secrets/atuin-spirit.age" (toString c.age.secrets.atuin.file);
     serverProfilesCapture =
       builtins.all
         (
