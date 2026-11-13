@@ -1,8 +1,11 @@
 # Atuin Threads with T3
 
 Atuin Threads indexes native agent transcripts; it does not sync T3's database.
-This profile installs Atuin 18.24.8 and an `atuin-mcp` launcher, with **conversation
-capture and tool-payload capture off by default**. The separate `nixpkgs-atuin`
+This profile installs Atuin 18.24.8 and an `atuin-mcp` launcher. The reusable module
+keeps **conversation capture and tool-payload capture off by default**. The personal
+Oppy, Spirit and Karkinos profiles explicitly enable conversation capture in
+`homes/amunoz/atuin-server-sync.nix`; tool payloads remain off. Moby and laptop
+profiles do not opt in. The separate `nixpkgs-atuin`
 input leaves the fleet's main nixpkgs pin unchanged. It currently pins the upstream
 nixpkgs commit introducing 18.24.8, ahead of the unstable channels; update that
 isolated pin when adopting a newer Atuin release.
@@ -10,7 +13,8 @@ isolated pin when adopting a newer Atuin release.
 ## Enable capture deliberately
 
 The personal `homes/amunoz/home.nix` imports the module and enables the package.
-In that home config (or a host-specific personal module), opt in with:
+The three Linux server profiles already opt in; for an additional host-specific
+personal module, use:
 
 ```nix
 programs.atuinThreads = {

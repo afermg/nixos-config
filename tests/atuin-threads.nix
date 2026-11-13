@@ -86,6 +86,30 @@ let
     ];
     rejectsForcedOldPackage = !(builtins.tryEval forcedOld).success;
     requiresAtuin = !(builtins.tryEval noAtuin).success;
+    serverProfilesCapture =
+      builtins.all
+        (
+          name:
+          let
+            c = flake.homeConfigurations.${name}.config;
+          in
+          c.programs.atuin.settings.threads.capture
+          && !c.programs.atuin.settings.threads.capture_tools
+          && c.programs.atuin.settings.daemon.sync_frequency == 300
+        )
+        [
+          "amunoz@oppy"
+          "amunoz@spirit"
+          "amunoz@karkinos"
+        ];
+    otherProfilesDoNotCapture =
+      builtins.all
+        (name: !flake.homeConfigurations.${name}.config.programs.atuin.settings.threads.capture)
+        [
+          "amunoz@moby"
+          "alan@darwin001"
+          "amunozgo@darwin002"
+        ];
   };
 in
 assert lib.assertMsg (builtins.all (x: x) (builtins.attrValues checks)) (builtins.toJSON checks);

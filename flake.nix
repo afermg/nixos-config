@@ -147,6 +147,7 @@
           outputs.homeModules.pi-msg
           ./modules/shared/config/hindsight/server.nix
           ./homes/amunoz/oppy-ssh.nix
+          ./homes/amunoz/atuin-server-sync.nix
         ];
 
         services.hindsightServer.enable = true;
@@ -270,6 +271,7 @@
             extraSpecialArgs = { inherit inputs outputs; };
             modules = [
               outputs.homeModules.amunoz
+              ./homes/amunoz/atuin-server-sync.nix
               {
                 hindsightBackupSyncthing.enable = true;
                 ixBackupMesh.deviceName = "spirit";
@@ -280,7 +282,10 @@
           "amunoz@karkinos" = lib.homeManagerConfiguration {
             pkgs = pkgsFor.x86_64-linux;
             extraSpecialArgs = { inherit inputs outputs; };
-            modules = [ outputs.homeModules.amunoz ];
+            modules = [
+              outputs.homeModules.amunoz
+              ./homes/amunoz/atuin-server-sync.nix
+            ];
           };
 
           "zchen@moby" = lib.homeManagerConfiguration {
