@@ -2,8 +2,34 @@
 
 Oppy hosts the shared Hindsight API and database. **ix must not run a Hindsight
 server, model worker, or backup timer**; its email and Home Assistant services
-are unchanged. Pi clients use `http://oppy.tail5e510f.ts.net:8888` over Tailscale.
+are unchanged. Clients use `http://oppy.tail27b080.ts.net:8888` over Tailscale.
 MCP and the Control Plane are disabled.
+
+## Cross-device clients
+
+Pi retains its automatic recall/retention extension. Codex uses the portable
+`~/.local/bin/hindsight-memory` command and user-wide `AGENTS.md` guidance to recall
+existing setup before asking the user to repeat it, and retain verified durable
+facts. The CLI uses Node.js 24 and the same configuration, token file, secret
+filter, and repository bank naming as Pi. It does not require enabling server MCP.
+
+```bash
+~/.local/bin/hindsight-memory health
+~/.local/bin/hindsight-memory banks
+~/.local/bin/hindsight-memory recall --bank org --query 'MacBook Firefox bridge'
+printf '%s\n' 'A verified non-secret setup fact.' | \
+  ~/.local/bin/hindsight-memory retain --bank org --document-id setup-fact
+```
+
+The `org` bank holds established personal/workflow context across repositories.
+Project-specific facts use the repository bank. Every device reads and writes
+the same server database, not a separately synchronized copy. Never copy `pg0/`
+between machines. Client availability does not imply off-host backup replication.
+
+The former `oppy.tail5e510f.ts.net` hostname and `100.94.5.85` address are obsolete.
+Check authenticated bank access, not just public health, after changing a client.
+Existing agent sessions may need to restart/reload to load new instructions or
+the Pi extension; the CLI is immediately usable.
 
 ## Configuration
 
@@ -64,7 +90,7 @@ switch was performed, avoiding activation of unrelated pending edits.
 ```bash
 systemctl --user status hindsight-api.service hindsight-backup.timer
 curl -fsS http://127.0.0.1:8888/health
-curl -fsS http://oppy.tail5e510f.ts.net:8888/health
+curl -fsS http://oppy.tail27b080.ts.net:8888/health
 podman stats --no-stream hindsight-api
 ```
 

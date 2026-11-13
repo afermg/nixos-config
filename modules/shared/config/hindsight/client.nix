@@ -7,7 +7,7 @@
 let
   home = config.home.homeDirectory;
   hindsightConfig = {
-    api_url = "http://oppy.tail5e510f.ts.net:8888";
+    api_url = "http://oppy.tail27b080.ts.net:8888";
     token_file = "${home}/.config/hindsight/api-token";
     state_dir = "${home}/.local/state/hindsight";
     reflect_mission = "Maintain durable technical knowledge about this Git repository across coding agents.";
@@ -23,11 +23,23 @@ in
   };
 
   home.file = {
+    ".local/share/hindsight-client/hindsight.ts" = { source = ./hindsight.ts; force = true; };
+    ".local/share/hindsight-client/hindsight-memory.mjs" = { source = ./hindsight-memory.mjs; force = true; };
+    ".local/bin/hindsight-memory" = {
+      executable = true;
+      force = true;
+      text = ''
+        #!${pkgs.runtimeShell}
+        exec ${pkgs.nodejs}/bin/node "${home}/.local/share/hindsight-client/hindsight-memory.mjs" "$@"
+      '';
+    };
     ".config/hindsight/config.json" = {
       text = builtins.toJSON hindsightConfig;
+      force = true;
     };
     ".pi/agent/extensions/hindsight.ts" = {
       source = ./hindsight.ts;
+      force = true;
     };
   };
 
