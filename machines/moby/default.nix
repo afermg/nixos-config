@@ -155,6 +155,8 @@
   };
 
   nix.settings = {
+    substituters = [ "https://cache.flox.dev?priority=50" ];
+    trusted-public-keys = [ "flox-cache-public-1:7F4OyH7ZCnFhcze3fJdfyXYLQw/aV7GEed86nQ7IsOs=" ];
     # Enable flakes and new 'nix' command
     experimental-features = [
       "nix-command"
@@ -290,6 +292,7 @@
   # USER HOMES
   # home-manager.users.amunoz = import ../../modules/nixos/home-manager.nix;
   home-manager.users.amunoz = {
+    _module.args.includeZotero = false;
     dconf.settings = {
       "org/gnome/shell".favorite-apps = [
         "firefox.desktop"

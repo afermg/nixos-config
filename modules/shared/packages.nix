@@ -72,7 +72,7 @@ with pkgs;
   lemminx # xml
   marksman # markdown
   ruff # python
-  ltex-ls # latex/org-mode
+  ltex-ls-plus # latex/org-mode
   autotools-language-server # make
 
   ## Non-LSP code helpers

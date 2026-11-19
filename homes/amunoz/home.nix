@@ -3,6 +3,7 @@
   config,
   inputs,
   amunozInputs ? inputs,
+  includeZotero ? true,
   username ? null,
   ...
 }:
@@ -27,35 +28,40 @@ in
     username = "${user}";
     homeDirectory = "/${home_parent}/${user}";
     stateVersion = "24.05";
-    packages = pkgs.callPackage ./packages.nix { inputs = amunozInputs; } ++ [
-      # Recover atuin sync after server-side session invalidation. Reads
-      # username/password from rbw's "atuin" entry and the BIP39 key from
-      # the "atuin key" entry, then runs `atuin login`.
-      (pkgs.writeShellApplication {
-        name = "atuin-relogin";
-        runtimeInputs = [
-          personalAtuin
-          pkgs.rbw
-        ];
-        text = ''
-          set -euo pipefail
-          rbw unlock
-          user=$(rbw get atuin --field username)
-          pass=$(rbw get atuin)
-          key=$(rbw get 'atuin key')
-          atuin login -u "$user" -p "$pass" -k "$key"
-        '';
-      })
-      (pkgs.writeShellApplication {
-        name = "gptel-pi-openai-auth";
-        runtimeInputs = [ pkgs.nodejs_24 ];
-        text = ''
-          exec node \
-            ${../../modules/shared/config/pi/gptel-openai-auth.mjs} \
-            ${personalPiCodingAgent}/lib/node_modules/pi-monorepo/dist/index.js
-        '';
-      })
-    ];
+    packages =
+      pkgs.callPackage ./packages.nix {
+        inputs = amunozInputs;
+        inherit includeZotero;
+      }
+      ++ [
+        # Recover atuin sync after server-side session invalidation. Reads
+        # username/password from rbw's "atuin" entry and the BIP39 key from
+        # the "atuin key" entry, then runs `atuin login`.
+        (pkgs.writeShellApplication {
+          name = "atuin-relogin";
+          runtimeInputs = [
+            personalAtuin
+            pkgs.rbw
+          ];
+          text = ''
+            set -euo pipefail
+            rbw unlock
+            user=$(rbw get atuin --field username)
+            pass=$(rbw get atuin)
+            key=$(rbw get 'atuin key')
+            atuin login -u "$user" -p "$pass" -k "$key"
+          '';
+        })
+        (pkgs.writeShellApplication {
+          name = "gptel-pi-openai-auth";
+          runtimeInputs = [ pkgs.nodejs_24 ];
+          text = ''
+            exec node \
+              ${../../modules/shared/config/pi/gptel-openai-auth.mjs} \
+              ${personalPiCodingAgent}/lib/node_modules/pi-monorepo/dist/index.js
+          '';
+        })
+      ];
     file = import ../../modules/shared/files.nix { inherit config pkgs; };
   };
 

@@ -1,5 +1,9 @@
 # Packages that only I use
-{ pkgs, inputs }:
+{
+  pkgs,
+  inputs,
+  includeZotero ? true,
+}:
 with pkgs;
 let
   shared-packages = import ../../modules/shared/packages.nix { inherit pkgs; };
@@ -58,7 +62,7 @@ in
   ## docs
   pdftk
   gnumeric
-  ltex-ls # language tool LSP for latex and org-mode
+  ltex-ls-plus # language tool LSP for latex and org-mode
   harper # grammar checker LSP for prose formats
   autotools-language-server
 
@@ -72,7 +76,6 @@ in
   ## very specific needs
   haskellPackages.xml-to-json-fast
   qrtool # encode and decode qr codes
-  zotero
   nix-output-monitor
 
   # packages under examination
@@ -80,6 +83,7 @@ in
   xclip # clipboard manipulation tool
 
 ]
+++ pkgs.lib.optional includeZotero zotero
 ++ shared-packages
 ++ pkgs.lib.optionals (!pkgs.stdenv.hostPlatform.isDarwin) [
   ncspot

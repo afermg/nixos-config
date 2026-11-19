@@ -2,10 +2,10 @@
   disko.memSize = 16384; # 16GB
   disko.devices = {
     disk = {
-      # SSD cluster
+      # Retained SSD with the EFI partition. Never depend on NVMe enumeration.
       ssd0 = {
         type = "disk";
-        device = "/dev/nvme1n1";
+        device = "/dev/disk/by-id/nvme-eui.002538414144b5fb";
         imageSize = "10G"; # For VM
         content = {
           type = "gpt";
@@ -29,28 +29,13 @@
           };
         };
       };
-      ssd1 = {
-        type = "disk";
-        device = "/dev/nvme0n1";
-        imageSize = "10G";
-        content = {
-          type = "gpt";
-          partitions = {
-            zfs = {
-              size = "100%";
-              content = {
-                type = "zfs";
-                pool = "zroot";
-              };
-            };
-          };
-        };
-      };
+      # Former ssd1 (EUI ...b5f9, serial S7KGNJ0X158409E) was evacuated
+      # with ZFS top-level device removal. Do not recreate it on rebuild.
 
       # HDD cluster
       hdd0 = {
         type = "disk";
-        device = "/dev/sda";
+        device = "/dev/disk/by-id/wwn-0x5000c500e84abb69";
         imageSize = "10G";
         content = {
           type = "gpt";
@@ -68,7 +53,7 @@
 
       hdd1 = {
         type = "disk";
-        device = "/dev/sdb";
+        device = "/dev/disk/by-id/wwn-0x5000c500e86adcbe";
         imageSize = "10G";
         content = {
           type = "gpt";
@@ -150,6 +135,9 @@
             type = "zfs_fs";
             options."com.sun:auto-snapshot" = "false";
             options.mountpoint = "/datastore";
+            # /datastore currently contains unrelated SSD-root data. Mount
+            # this legacy HDD dataset only explicitly, at a reviewed path.
+            options.canmount = "noauto";
             postCreateHook = "zfs snapshot zstore/datastore@blank";
           };
         };
