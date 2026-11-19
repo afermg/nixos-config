@@ -18,6 +18,12 @@ in
   "sshkey_personal.age".publicKeys = keys;
   "tailscale.age".publicKeys = keys;
   "atuin.age".publicKeys = keys ++ [ ix_key ];
+  # Same sync key, encrypted for Spirit's existing local agenix identity and
+  # the existing personal recovery identity. No fleet SSH private-key copying.
+  "atuin-spirit.age".publicKeys = [
+    personal_key
+    "age13fxnk3v6au9j2nvhuquzjam75nawndy7raltrqznxpfra509uu5swmyahw"
+  ];
   "cloudflared-overleaf.age".publicKeys = keys;
   "cloudflared-marimohub.age".publicKeys = keys;
   "cloudflared-marimohub-quasimorphic.age".publicKeys = keys;

@@ -5,6 +5,9 @@
     # Nixpkgs
     nixpkgs-stable.url = "github:nixos/nixpkgs/nixos-25.05";
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+    # Upgrade Atuin independently: Threads requires 18.24+, without moving the fleet pin.
+    # Atuin 18.24.8 has landed in nixpkgs, ahead of the unstable channels.
+    nixpkgs-atuin.url = "github:nixos/nixpkgs/103ab010c78eba0117a5ab6ad392887bdb4b653e";
 
     # darwin inputs
     darwin = {
@@ -119,6 +122,11 @@
         };
       };
 
+      homeModules.atuin-threads = {
+        _module.args.atuinThreadsInputs = inputs;
+        imports = [ ./modules/shared/config/atuin/threads.nix ];
+      };
+
       # Reusable host-specific Pi/XMPP bridge. Consumers configure the domain,
       # encrypted account file, and whether the local registration helper is
       # appropriate for that host.
@@ -139,6 +147,7 @@
           outputs.homeModules.pi-msg
           ./modules/shared/config/hindsight/server.nix
           ./homes/amunoz/oppy-ssh.nix
+          ./homes/amunoz/atuin-server-sync.nix
         ];
 
         services.hindsightServer.enable = true;
@@ -262,9 +271,12 @@
             extraSpecialArgs = { inherit inputs outputs; };
             modules = [
               outputs.homeModules.amunoz
+              ./homes/amunoz/atuin-server-sync.nix
               {
                 hindsightBackupSyncthing.enable = true;
                 ixBackupMesh.deviceName = "spirit";
+                age.identityPaths = [ "/home/amunoz/.config/agenix/spirit.agekey" ];
+                age.secrets.atuin.file = lib.mkForce ./secrets/atuin-spirit.age;
               }
             ];
           };
@@ -272,7 +284,10 @@
           "amunoz@karkinos" = lib.homeManagerConfiguration {
             pkgs = pkgsFor.x86_64-linux;
             extraSpecialArgs = { inherit inputs outputs; };
-            modules = [ outputs.homeModules.amunoz ];
+            modules = [
+              outputs.homeModules.amunoz
+              ./homes/amunoz/atuin-server-sync.nix
+            ];
           };
 
           "zchen@moby" = lib.homeManagerConfiguration {

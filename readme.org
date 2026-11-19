@@ -23,6 +23,9 @@ Available entrypoints:
 - =alan@darwin001= (Darwin)
 - =amunozgo@darwin002= (Darwin)
 
+** Atuin Threads and T3
+See [[file:docs/atuin-threads.md][Atuin Threads with T3]] for opt-in agent history capture, MCP registration, and cross-machine resume limitations. Conversation and tool-payload capture are disabled by default.
+
 ** Inspect Syncthing
 See [[file:docs/syncthing.md][Inspecting Syncthing manually]] for local GUI access, secure SSH forwarding to =moby=, synchronization checks, and troubleshooting.
 
