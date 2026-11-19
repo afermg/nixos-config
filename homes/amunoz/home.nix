@@ -20,6 +20,8 @@ let
   personalPiCodingAgent = personalPkgs.pi-coding-agent;
 in
 {
+  _module.args.includeZotero = pkgs.lib.mkDefault true;
+
   # nixpkgs.{config,overlays} and the agenix home-manager module are injected
   # by `homeModules.amunoz` in flake.nix. `amunozInputs` keeps this profile's
   # package pins authoritative even when a consuming flake passes its own
